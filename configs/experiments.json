@@ -1,0 +1,28 @@
+{
+  "status": "proposed_learning_config_not_benchmarked",
+  "algorithms": ["nsga2", "spea2"],
+  "instances": ["cap61", "cap62", "cap101", "cap102", "cap121", "cap122"],
+  "analysis_instances": ["cap61", "cap101", "cap121"],
+  "seeds": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+  "common": {
+    "initialization": "shared_feasible_constructor_to_implement",
+    "repair": "shared_capacity_repair_to_implement",
+    "crossover_probability_per_pair": 0.9,
+    "mutation_probability_per_gene": 0.02,
+    "max_objective_evaluations": 10000,
+    "count_initial_population_evaluations": true,
+    "cache_objective_values": false,
+    "termination": "objective_evaluation_budget"
+  },
+  "configurations": {
+    "smaller_population": {"population_size": 50},
+    "reference": {"population_size": 100},
+    "larger_population": {"population_size": 200}
+  },
+  "algorithm_specific": {"spea2": {"archive_size_rule": "equal_to_population_size"}},
+  "metrics": {
+    "normalization": "define_shared_bounds_per_instance_before_comparison",
+    "reference_point": null,
+    "unique_objective_vectors_for_count": true
+  }
+}

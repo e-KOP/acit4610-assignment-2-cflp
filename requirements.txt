@@ -1,0 +1,3 @@
+# The current scaffold uses only the Python 3.10+ standard library.
+# No third-party installation is required to read data, learn, or run tests.
+# Add plotting/statistics dependencies when implementing those modules.
