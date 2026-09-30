@@ -1,23 +1,23 @@
-# %% 1. 读取更新后的小规模实例。所有需求、容量、费用保持原始数值。
+# %% 1. Load an updated small instance, preserving all original demands, capacities, and costs.
 from cflp.data import load_instance, verify_data
 from cflp.evaluation import evaluate
 from cflp.feasibility import check_feasibility, necessary_feasibility_issues
 
 verify_data()
-instance = load_instance("cap61")  # 也可以改成 cap62。
-print("实例：", instance.name)
-print("仓库数：", instance.n_facilities, "客户数：", instance.n_customers)
-print("总容量：", sum(instance.capacities), "总需求：", sum(instance.demands))
-print("最大仓库容量：", max(instance.capacities), "最大客户需求：", max(instance.demands))
+instance = load_instance("cap61")  # You can also use cap62.
+print("Instance:", instance.name)
+print("Facilities:", instance.n_facilities, "Customers:", instance.n_customers)
+print("Total capacity:", sum(instance.capacities), "Total demand:", sum(instance.demands))
+print("Maximum facility capacity:", max(instance.capacities), "Maximum customer demand:", max(instance.demands))
 
-# %% 2. 必要条件通过不等于任意分配都可行，还需构造并检查完整分配。
+# %% 2. Passing necessary conditions does not validate every assignment; construct and check one.
 issues = necessary_feasibility_issues(instance)
 if issues:
     raise ValueError("; ".join(issues))
-print("必要条件通过。下面尝试构造一个完整分配。")
+print("Necessary conditions pass. Now try to construct a complete assignment.")
 
-# %% 3. 教学构造：先分配大客户，选择放入后剩余容量最少的可容纳仓库。
-# 这是确定性贪心示范，不是完整 MOEA，也不是通用修复。
+# %% 3. Teaching construction: largest demand first; choose the tightest remaining capacity that fits.
+# This is a deterministic greedy demonstration, not a complete MOEA or general repair procedure.
 remaining = list(instance.capacities)
 assignment = [-1] * instance.n_customers
 customer_order = sorted(range(instance.n_customers), key=lambda j: (-instance.demands[j], j))
@@ -26,32 +26,32 @@ for customer in customer_order:
     demand = instance.demands[customer]
     candidates = [i for i in range(instance.n_facilities) if remaining[i] >= demand]
     if not candidates:
-        raise RuntimeError("本次贪心构造失败；不能由此断言实例无解。")
+        raise RuntimeError("This greedy construction failed; that does not prove the instance infeasible.")
     facility = min(candidates, key=lambda i: (remaining[i] - demand, i))
     assignment[customer] = facility
     remaining[facility] -= demand
 
-# %% 4. 重新检查所有客户与所有容量，再计算两个目标。
+# %% 4. Recheck every assignment and facility capacity before evaluating both objectives.
 loads = check_feasibility(instance, assignment)
-print("50 个客户的完整分配：", assignment)
+print("Complete assignment of all 50 customers:", assignment)
 for facility in sorted(set(assignment)):
-    print(f"仓库 {facility}：负载 {loads[facility]:g} / 容量 {instance.capacities[facility]:g}")
-print("目标 (开仓费, 分配费)：", evaluate(instance, assignment))
-print("这是可行性见证，不代表费用最优。")
+    print(f"Facility {facility}: load {loads[facility]:g} / capacity {instance.capacities[facility]:g}")
+print("Objectives (opening cost, allocation cost):", evaluate(instance, assignment))
+print("This demonstrates feasibility, not optimal cost.")
 
-# %% 5. 两个客户分别能装下，合在一起却不一定装得下。
+# %% 5. Two customers may each fit individually but exceed capacity when assigned together.
 largest, second_largest = customer_order[:2]
 combined_demand = instance.demands[largest] + instance.demands[second_largest]
-print(f"客户 {largest} 和 {second_largest} 的合计需求：{combined_demand:g}")
+print(f"Combined demand of customers {largest} and {second_largest}: {combined_demand:g}")
 bad_assignment = assignment.copy()
 bad_assignment[second_largest] = bad_assignment[largest]
 try:
     evaluate(instance, bad_assignment)
 except ValueError as error:
-    print("预期的容量错误：", error)
+    print("Expected capacity error:", error)
 else:
-    raise AssertionError("此教学候选应当被容量检查拒绝。")
+    raise AssertionError("The capacity check should reject this teaching candidate.")
 
-# %% 6. 下一步仍需要共享的可行性处理，不能因为更换实例就跳过修复。
-print("初始化、交叉、变异后的候选均需检查；不可行时按共同规则修复或重新生成。")
-print("通用初始化与修复模块仍待实现；不得拆分需求、删除客户或更改数据。")
+# %% 6. Shared feasibility handling is still needed after replacing the benchmark instances.
+print("Check candidates after initialization, crossover, and mutation; repair or regenerate using shared rules.")
+print("General initialization and repair remain to be implemented. Do not split demand, omit customers, or change data.")

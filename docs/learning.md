@@ -1,40 +1,32 @@
-# 边学边搭建
+# Learn while building
 
-当前已经完成数据与模型基础。下面每一步都对应一个可验证的小结果。
-不要一次运行未完成的全部算法；先运行每一步的最小例子。
+Data loading and the basic model are implemented. Each step below has a small,
+verifiable result. Start with working examples instead of trying to run the
+unfinished algorithms together.
 
-## 合成学习入口
+## Combined walkthrough
 
-运行 `python3 learn_workflow.py`，或从第一段开始逐段执行 `# %%`。
-顺序为：真实数据 → 小案例复习 → cap101 三个方案 → 初始种群 → 分层与拥挤距离 →
-锦标赛 → 交叉变异 → 子代评价 → 合并重排 → 下一代 → cap61 可行构造 → 超载候选。
-每段使用前面留下的变量；修改前面的参数后，从对应初始化段起重新向下执行。
-第 10 段结束时完成一代更新，16 次评价只统计本次进化；前后讲解案例的评价另外发生。
-不要把 cap101 初始化直接用于 cap61；通用容量初始化与修复仍需后续完成。
+Run `python3 learn_workflow.py`, or execute its `# %%` cells in order:
 
-## 从教学案例进入真实 cap61
+```text
+Real data -> small example -> three cap101 solutions -> initial population
+-> ranks and crowding -> tournament selection -> crossover and mutation
+-> offspring evaluation -> merge and rerank -> next generation
+-> feasible cap61 construction -> overloaded candidate
+```
 
-更新后的 Small 实例为 cap61、cap62，Medium / Large 清单不变。
-运行 `python3 learn_cap61.py`：读数据 → 必要条件检查 → 按需求从大到小构造分配 →
-完整容量检查 → 双目标评价 → 故意把两个大客户放在一起，观察超载被拒绝。
-cap61、cap62 的单仓容量为 15000，客户最大需求为 12912，实际可行分配已验证。
-但客户编号 33 和 10 的需求分别为 12912、5495，两者合计 18407，不能交给同一个仓库。
-因此可行实例不保证任意候选可行；共享初始化与不可行处理仍需继续实现。
-教学构造是一次确定性贪心示范，不是随机种群初始化、修复算法或完整 MOEA；
-构造失败不证明实例无解，必要条件通过也不证明可行。
-所有客户需求保持完整，不删除客户，不修改原始 OR-Library 数值。
+Each cell uses variables from earlier cells. If you change an earlier parameter,
+rerun from the relevant initialization cell onward. Cell 10 completes one
+generation update. Its 16 evaluations count only that evolution demonstration;
+separate teaching examples before and after it also call the evaluator.
+Do not apply the cap101 initialization directly to cap61. General capacity-aware
+initialization and repair remain to be implemented.
 
-## 从读数开始
+## Reading data
 
-案例学习完成后，运行 `python3 learn_cap101.py`：读取真实数据 → 全部分配给仓库 0 →
-验证三个约束 → 展开双目标求和 → 比较低开仓费方案和低分配费方案。
-cap101 的单仓容量等于总需求；编号 10 的仓库原始开仓费为 0。
-因此它很适合先学习双目标与种群选择，但不会展示容量超载带来的修复难点。
-这个文件还没有运行 MOEA，三个方案的比较也不是完整的 Pareto 前沿。
-
-终端进入项目根目录，然后执行 `python3 learn_data.py`。
-在支持 cell 的编辑器中，可从第一段 `# %%` 开始逐段运行，后面的段依赖前面变量。
-如使用普通 Python 交互窗口，先在项目根目录运行 `python3`，出现 `>>>` 后再输入：
+From the project root, run `python3 learn_data.py`. In a cell-aware editor, begin
+with the first `# %%` cell. Alternatively, start `python3` from the project root
+and enter the following at the `>>>` prompt:
 
 ```python
 from cflp.data import load_instance
@@ -45,130 +37,226 @@ instance.demands[0]
 instance.allocation_costs[0][0]
 ```
 
-预期依次看到 16、50、146.0、6739.725。
-从原始 `data/or_library/cap61.txt` 中找到对应值，再读 `cflp/data.py`。
-思考：为什么用 `split()`，而不能把每一行直接当成一位客户？
+Expected values: 16, 50, 146.0, and 6739.725. Find them in the original
+`data/or_library/cap61.txt`, then read `cflp/data.py`.
+Consider why the reader uses `split()` instead of treating each line as a complete
+customer record.
 
-## 编码、约束、评价
+## Encoding, constraints, and evaluation
 
-运行 `python3 learn_solution.py`，预期得到负载 `(0, 7, 5)` 和目标 `(130, 24)`。
-逐段阅读 `representation.py` → `feasibility.py` → `evaluation.py`。
-自己回答：列表位置是什么？列表值是什么？为什么开仓费只算一次？
-练习 `[0, 0, 0]` 和 `[0, 1, 2]`，分别应得到 `(100, 72)` 和 `(230, 40)`。
-把全部客户交给仓库 B（编号 1）应触发超载错误，而不是得到正常目标结果。
+Run `python3 learn_solution.py`. The `[1, 1, 2]` example has loads `(0, 7, 5)` and
+objectives `(130, 24)`. Read `representation.py`, `feasibility.py`, and
+`evaluation.py` in that order.
 
-## 小规模枚举与 Pareto
+Explain what a list position means, what its value means, and why an opening cost
+is counted only once. Check assignments `[0, 0, 0]` and `[0, 1, 2]`, which produce
+`(100, 72)` and `(230, 40)`. Assigning every customer to facility B (ID 1) should
+raise an overload error rather than return valid objectives.
 
-只在三仓库三客户教学例子上，用 `itertools.product(range(3), repeat=3)` 枚举 27 种分配。
-先过滤不可行方案，再计算目标。实现 `cflp/pareto.py` 中的两个函数。
-不要尝试枚举真实实例的 `16**50` 种分配。
+## Small enumeration and Pareto comparisons
 
-手工支配关系检查：
+For the three-facility, three-customer teaching example only, use
+`itertools.product(range(3), repeat=3)` to enumerate 27 assignments. Keep feasible
+assignments before computing their objectives. The example has 15 feasible and
+12 infeasible assignments. Study the dominance and sorting functions in
+`cflp/pareto.py` to extract the non-dominated set. Do not enumerate `16**50`
+assignments for a real small benchmark.
 
-- `(130, 24)` 支配 `(160, 44)`。
-- `(100, 72)` 与 `(130, 24)` 互不支配。
-- 完全相同的两个目标向量不严格支配彼此。
+Check these relationships by hand:
 
-检查输出集合内部没有支配关系，并明确是否按目标向量去重。
+- `(130, 24)` dominates `(160, 44)`.
+- `(100, 72)` and `(130, 24)` are mutually non-dominated.
+- Equal objective vectors do not strictly dominate each other.
 
-## 可行初始化与修复
+Verify that no output point dominates another and document whether metrics
+count distinct objective vectors or distinct assignments.
 
-在 `initialization.py` 构建可行分配，使用传入的 `random.Random(seed)`，避免到处修改全局随机状态。
-一种起点是按客户需求排序并尝试剩余容量足够的仓库；失败时有界重试或重新分配。
-总容量足够只是必要条件，贪心构造失败也不证明问题无解。
-在 `repair.py` 定义修复失败时的处理方式，不能无限重试或改小客户需求。
+## Real cap101 solutions
 
-完成标准：先用必要条件检查识别已证明不可行的实例；其余实例上产生的每个候选解，都通过 `check_feasibility`；
-失败被明确记录和处理。不要因为得到可行解，就声称它的费用足够优。
+Run `python3 learn_cap101.py`: load the real data, assign all customers to
+facility 0, check the three constraints, expand both objective sums, and compare
+solutions favoring opening cost or allocation cost.
 
-## 共享交叉和变异
+Each cap101 facility can hold total demand, and facility 10 has an original
+opening cost of zero. This makes it useful for learning two objectives and
+population selection without capacity-repair difficulties. This file does not
+run a MOEA, and comparing three solutions does not establish the complete Pareto
+front.
 
-在 `operators.py` 实现操作；原父代不能被原地改写。
-当前接口约定交叉概率按父代对，变异概率按客户位置。
-操作后检查可行性，必要时调用同一套修复。
-两个 MOEA 的编码、初始化和问题相关操作必须共享。
+## Initial population and non-dominated sorting
 
-## NSGA-II 与 SPEA2
+Run `python3 learn_population.py`. Seed 42 generates eight complete assignments,
+each with 50 customers. Each individual first selects a random facility subset,
+then randomly assigns customers within it. Only used facilities contribute to
+opening cost.
 
-NSGA-II：非支配分层 → 拥挤距离 → 锦标赛 → 子代 → 父子合并的精英环境选择。
-SPEA2：强度 → 原始适应度 → 密度 → 档案更新与截断 → 选择和子代。
-核心操作自己实现；数据与基础数值库不替代核心进化逻辑。
-先在小例子上检查，再逐渐增加规模与预算。
+This teaching initialization relies on cap101's large capacities; general
+capacity-constrained initialization is still unfinished. The expected fronts are:
 
-完成标准：输出全部可行；正确记录初始化和搜索中的评价次数；
-相同种子和设置可复现目标结果；小例子可与枚举前沿对照。
-两种方法不能仅以相同代数声称计算预算公平。
+| Front | Individual IDs |
+|---|---|
+| 1 | 5, 6 |
+| 2 | 3, 4, 7 |
+| 3 | 0 |
+| 4 | 1, 2 |
 
-## 指标、实验与分析
+The shared dominance and non-dominated sorting functions in `cflp/pareto.py` are
+implemented. This lesson does not yet perform variation or environmental
+selection. Non-dominated within this population does not mean globally optimal.
 
-实现 `metrics.py`：二维 HV 是矩形并集面积，重叠不能重复计数。
-先验证单点 `(2, 3)`、参考点 `(5, 6)` 的 HV 为 9，再验证多点重叠情况。
-同一实例的全部比较使用共同的归一化和参考点，不能每次运行单独缩放。
-不要将 OR-Library 的单目标最优值当作双目标真实前沿。
+## Crowding distance and parent selection
 
-用 `python3 -m cflp --plan` 查看实验草案。正式运行器仍需在 `experiments.py` 中实现，
-它应按实例、算法、配置、种子执行并保存结果，不能把规划当成已完成的实验。
-时间测量范围需要一致；每次运行的原始结果必须保存，才能统计均值和样本标准差。
-统计检验的独立/配对假设和多重比较策略应与实际设计一致。
+Run `python3 learn_selection.py` to reproduce the same population and compute
+crowding distance separately within each front. In front `[3, 4, 7]`, individual
+3 has distance 2; boundary individuals 4 and 7 have infinite distance.
 
-读取器和目标计算已有测试，可运行：
+`inf` protects the front's extremes. It is not infinite cost and does not take
+priority over a better rank. For each objective, crowding adds the gap between
+neighboring points divided by that objective's range within the front.
+
+Implementation conventions:
+
+- Fronts containing one or two points receive infinite distances.
+- Constant objectives are skipped.
+- A front of at least three identical vectors receives zero distances.
+- Ties in objective values use a stable ordering by original index.
+
+Each tournament samples two different individuals. Prefer lower rank, then
+larger crowding distance, then break complete ties randomly. Different
+tournaments may sample and select the same individual again. Selection returns
+indices; the lesson copies the corresponding assignments. It neither changes the
+original population nor reevaluates the selected parents.
+
+Source for crowding distance and crowded comparison:
+[Deb et al., NSGA-II (2002)](https://doi.org/10.1109/4235.996017).
+Continue with variation and environmental selection in the following lessons.
+
+## Pairing, crossover, and mutation
+
+Run `python3 learn_offspring.py`. Reproduce the population and parent selection,
+then pair parents by position, generating two children per pair.
+
+Single-point crossover occurs with probability 0.9 per pair and exchanges
+assignments after a random cut. Mutation acts independently on each customer with
+probability 0.02 and, when triggered, selects a different facility uniformly. A
+50-customer individual has an expected one mutation, but may actually have zero
+or several. Both operations return independent lists and preserve the parents.
+
+Initialization, selection, and variation use seeds 42, 7, and 21 to make individual
+lessons reproducible. Define a consistent run-level seed policy for formal
+experiments. The selected parents are `[5, 6, 6, 1, 3, 3, 6, 3]`; four pairs
+produce eight offspring.
+
+Valid assignments cannot overload a cap101 facility, so no repair is needed in
+this example. Nevertheless, each child is checked before evaluation. The run uses
+16 evaluations: 8 initial plus 8 offspring. There is no objective cache, and
+duplicate individuals still count as separate evaluations.
+
+Offspring are not guaranteed to differ from their parents or have better costs.
+Single-point crossover preserves the encoding, not capacity feasibility in
+general. Shared repair is still unfinished. This lesson leaves the original
+population intact; environmental selection is next.
+
+## Environmental selection: one generation update
+
+Run `python3 learn_environment.py`. P labels original individuals and C labels
+offspring. Merge the **entire original population** with the offspring, not the
+possibly repeated mating-parent list.
+
+Recompute non-dominated ranks and crowding on the combined set. Keep complete
+fronts while they fit. For the first front that does not fit, take individuals in
+descending crowding-distance order, using the supplied random generator to break
+ties. Later fronts are not considered.
+
+This example retains P5, P6, C0, P4, P7, C1, P0, and C6. These exactly fill the
+first three fronts, so this particular update does not truncate a front. The
+next generation has eight individuals and reuses their objective values; the
+evaluation count stays at 16.
+
+Partial-front truncation is implemented and checked with hand-calculated tests.
+To observe it separately, call
+`environmental_selection(combined_objectives, 7, Random(11))`. Only one of the
+third front's two boundary points then fits, and the tie is resolved randomly.
+This is an additional demonstration, not a change to the experimental population
+size. Continue subsequent generations from `next_population`; do not reset the
+random generators each generation.
+
+## Capacity constraints on cap61
+
+The updated small instances are cap61 and cap62. Run `python3 learn_cap61.py`:
+load data, check necessary conditions, allocate customers in descending demand
+order, validate the complete assignment, evaluate objectives, and deliberately
+put two large customers together to observe overload rejection.
+
+Both small instances have capacity 15000 per facility and maximum customer demand
+12912. Complete feasible assignments have been verified. However, customers 33
+and 10 demand 12912 and 5495 respectively. Their combined demand is 18407, so they
+cannot share one facility.
+
+A feasible instance does not make every candidate feasible. This deterministic
+greedy construction is not a random population initializer, repair method, or
+complete MOEA. A failed greedy attempt does not prove the instance infeasible;
+passing necessary conditions does not prove feasibility either.
+Keep customer demands indivisible, include every customer, and preserve the
+original OR-Library values.
+
+## Shared initialization and repair
+
+Implement `initialization.py` using the supplied `random.Random(seed)` rather
+than modifying global random state throughout the code. One starting point is
+to order customers by demand and choose facilities with sufficient remaining
+capacity, with bounded retries or reassignment when an attempt fails.
+
+Sufficient total capacity is necessary but not sufficient. Define failure
+handling in `repair.py`; do not retry forever or reduce demands to make solutions
+fit. Use necessary conditions to identify proven-infeasible instances, then
+validate every constructed candidate with `check_feasibility`. Record and handle
+failures explicitly. Finding a feasible solution is not evidence of good cost.
+
+Use the same encoding, initialization, crossover, mutation, and problem-specific
+feasibility handling in both MOEAs. The operators are in `operators.py` and must
+not modify parents in place. Their probabilities apply per parent pair for
+crossover and per customer gene for mutation. Check candidates after variation
+and apply the common repair procedure when needed.
+
+## Complete NSGA-II and SPEA2
+
+- NSGA-II: non-dominated sorting, crowding distance, tournament selection,
+  offspring, and elitist selection from the merged population.
+- SPEA2: strength, raw fitness, density, archive selection and truncation,
+  selection, and offspring.
+
+Implement core evolutionary operations yourself. Numerical and data libraries
+do not replace the required evolutionary logic. Begin with small examples and
+increase problem size and budget gradually.
+
+Completion criteria: every output solution is feasible, evaluation counts include
+initialization and search, the same seed and settings reproduce objective
+results, and small cases can be checked against enumeration. Equal generation
+counts alone do not establish equal computational budgets.
+
+## Metrics, experiments, and analysis
+
+Implement `metrics.py`. Two-dimensional HV is the area of a union of rectangles;
+overlap must not be counted twice. First verify that point `(2, 3)` with reference
+`(5, 6)` gives HV 9, then check overlapping rectangles. All comparisons for an
+instance need common normalization and a common reference point. Do not normalize
+each run separately or treat OR-Library's single-objective optimum as the true
+two-objective front.
+
+Use `python3 -m cflp --plan` to inspect proposed experiments. The actual runner in
+`experiments.py` still needs to execute and record each instance, algorithm,
+configuration, and seed. A plan is not a completed experiment. Use consistent
+timing boundaries and save raw per-run results for means and sample standard
+deviations. Choose statistical tests and multiple-comparison handling according
+to the actual independence or pairing design.
+
+Run the existing checks with:
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-以后优先为可能出错的边界添加验证：拥挤距离中某目标没有跨度、HV 重复点、
-修复失败、档案超过容量、剩余评价预算不足一个完整子代批次等。
-
-## cap101 初始种群与非支配排序
-
-运行 `python3 learn_population.py`，固定种子 42，生成 8 个完整分配，每个含 50 个客户。
-先随机选仓库子集，再随机分配客户；只有被使用的仓库计入开仓费。
-这是依赖 cap101 单仓容量足够的教学初始化，一般容量受限初始化仍待实现。
-本例第一层为个体 5、6，第二层为 3、4、7，第三层为 0，第四层为 1、2。
-`cflp/pareto.py` 的支配规则与非支配排序已实现，可供后续算法共用。
-本例没有交叉、变异、环境选择或完整 MOEA；当前非支配不代表全局最优。
-
-## 拥挤距离与父代选择
-
-运行 `python3 learn_selection.py`，重现同一个八个体种群，然后在每层内部计算距离。
-第二层 [3, 4, 7] 中，个体 3 的拥挤距离为 2，两个边界个体 4、7 为 inf。
-inf 是保护前沿两端的选择标记，不是无限费用，也不优先于更好的非支配层级。
-拥挤距离按每个目标在当前层的范围归一化，累加两侧邻居的间隔。
-单个/两个点的层全部设为 inf；常量目标跳过；三个及以上全相同点距离为 0。
-目标值并列时按原始编号稳定排序；这种边界并列规则属于明确的实现约定。
-
-锦标赛每次随机抽两个不同个体，rank 小者优先，同层距离大者优先，完全相同则随机。
-不同比赛允许重复抽中和选中同一个个体。选择返回编号，学习脚本复制对应染色体，
-不修改原种群，不在选择阶段重新评价。交叉、变异和环境替换仍待后续学习实现。
-
-算法来源：[Deb et al., NSGA-II (2002)](https://doi.org/10.1109/4235.996017)，
-拥挤距离和拥挤比较算子。
-
-## 配对、交叉与变异
-
-运行 `python3 learn_offspring.py`：复现种群与父代选择，然后按位置两两配对，
-每对生成两个子代。单点交叉概率为每对 0.9，交换随机切点之后的客户分配。
-逐客户变异概率为 0.02，触发时均匀选择一个不同仓库；每个 50 客户个体的期望变异数为 1，
-但实际可能为 0 或多次。两个操作均返回独立列表，保留原始父代。
-初始化、选择和变异操作分别使用种子 42、7、21，便于单节重现；这是教学约定，
-正式实验需定义统一的每次运行随机种子管理方式。
-
-本例父代编号为 [5, 6, 6, 1, 3, 3, 6, 3]，配成四对，产生八个子代。
-cap101 中容量不会被合法分配突破，因此无需修复；对子代仍逐个检查约束再评价。
-目标评价共 16 次（初始 8 + 子代 8），没有缓存去重，重复个体也计一次评价。
-“新子代”不保证分配不同、目标不同或费用更优。
-单点交叉只保证编码有效，不保证一般容量受限实例可行；共享修复仍待实现。
-下一步实现父代和子代合并后的精英环境选择，本节没有替换原种群。
-
-## 环境选择：完成一次代际更新
-
-运行 `python3 learn_environment.py`。P 表示原种群，C 表示子代；合并的是整个原种群，
-不是可能重复的八个交配父代。合并后重新排序，整层能容纳就保留，最后放不下的一层
-按拥挤距离降序截取，距离并列用传入随机数生成器打破平局。后续更差层不参与。
-本例保留 P5、P6、C0、P4、P7、C1、P0、C6，恰好填满前三层，因此本次没有距离截断。
-下一代仍为八个个体，目标值直接复用，不额外评价，累计评价 16 次。
-`environmental_selection` 已实现部分层截断，并用手算样例验证。
-若想观察放不下的情况，可单独调用 `environmental_selection(combined_objectives, 7, Random(11))`，
-此时第三层的两个边界点只能保留一个，平局随机；这只是额外演示，不改正式种群大小。
-完整多代循环、共享容量初始化/修复、SPEA2 和实验指标仍待后续实现。
+As development continues, validate meaningful edge cases: zero objective range
+in crowding, duplicate HV points, repair failure, archive overflow, and an
+insufficient remaining evaluation budget for a full offspring batch.
