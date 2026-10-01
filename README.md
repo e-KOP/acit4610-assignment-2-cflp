@@ -6,10 +6,10 @@ previous JSSP project: data, a problem package, configurations, tests,
 documentation, and results.
 
 **The project currently supports all six required instances, data integrity
-checks, feasible-solution evaluation, and a one-generation NSGA-II walkthrough.**
-General population initialization, capacity repair, the complete NSGA-II loop,
-SPEA2, and hypervolume remain learning tasks. No formal benchmark experiment
-results have been generated.
+checks, feasible-solution evaluation, shared capacity repair, and a
+one-generation NSGA-II walkthrough.** General population initialization, the
+complete NSGA-II loop, SPEA2, and hypervolume remain learning tasks. No formal
+benchmark experiment results have been generated.
 
 ## Quick start
 
@@ -75,7 +75,7 @@ CFLP/
 │   ├── feasibility.py         Implemented: necessary conditions and capacity checks
 │   ├── evaluation.py          Implemented: two objectives for feasible assignments
 │   ├── initialization.py      To implement: shared population initialization
-│   ├── repair.py              To implement: shared feasibility repair
+│   ├── repair.py              Implemented: deterministic shared capacity repair
 │   ├── operators.py           Implemented: single-point crossover and per-gene mutation
 │   ├── pareto.py              Implemented: dominance and non-dominated sorting
 │   ├── nsga2.py               Selection implemented; multi-generation loop unfinished
@@ -138,9 +138,10 @@ Both small instances have facility capacity 15000, and complete feasible
 assignments have been verified. However, individual candidates can still exceed
 capacity. Check candidates after initialization, crossover, and mutation, and
 handle infeasibility as required by the assignment. Do not split customer
-demand, omit customers, or alter the OR-Library data. General initialization and
-repair still need to be implemented. Run `python3 learn_cap61.py` to explore
-feasible construction and an overloaded candidate.
+demand, omit customers, or alter the OR-Library data. Shared capacity repair is
+implemented; general initialization remains unfinished. Run
+`python3 learn_cap61.py` to explore feasible construction and an overloaded
+candidate.
 
 ## Representation and objectives
 
@@ -162,6 +163,46 @@ Invalid solutions raise `ValueError` rather than receiving feasible objective
 values. The small example in `learn_solution.py` is for learning only; formal
 experiments must use the six required official instances.
 
+## Capacity repair
+
+`repair_assignment(instance, assignment, rng=None)` restores capacity feasibility
+while prioritising fewer gene changes. It uses the following deterministic rule:
+
+1. Select the facility with the largest overload.
+2. Consider only customers that another facility can accommodate completely.
+3. Choose the smallest-demand customer whose removal eliminates the overload.
+   If none qualifies, choose the largest-demand customer that can be moved.
+4. Choose the destination with the least remaining capacity after receiving that
+   customer. Unused facilities are eligible.
+5. Update the assignment and loads, then repeat until feasible.
+
+All ties use the lowest relevant facility or customer ID. The function returns
+a separate list and leaves the original assignment and benchmark data intact.
+The optional `rng` argument supports the shared operator interface but is not
+consumed. Invalid encodings or a lack of feasible moves raise `ValueError`;
+failure to find a move does not prove the instance is infeasible. Destinations
+never become overloaded, so each customer moves at most once. The heuristic
+does not guarantee globally minimum gene changes or objective values.
+
+```python
+from cflp.data import load_instance
+from cflp.repair import repair_assignment
+from cflp.evaluation import evaluate
+
+instance = load_instance("cap61")
+assignment = [0] * instance.n_customers
+repaired = repair_assignment(instance, assignment)
+print(evaluate(instance, repaired))
+```
+
+In the report example, facility 0 has load 20,492 and facility 1 has load 9,505.
+Moving customer 10 (demand 5,495) from facility 0 to facility 1 repairs the
+5,492 overload with one gene change, leaving loads of 14,997 and 15,000.
+
+The repair function is available for initialization and variation. Integrating
+it into the complete NSGA-II and SPEA2 loops remains part of those unfinished
+algorithms; the existing learning walkthroughs have not been changed.
+
 ## Learning sequence
 
 Use [the learning guide](docs/learning.md), either with the combined walkthrough
@@ -172,7 +213,7 @@ or with the separate lessons:
 3. Enumerate its 27 assignments and identify the non-dominated solutions.
 4. Study cap101 solution comparisons, population generation, and sorting.
 5. Follow parent selection, variation, and one environmental selection step.
-6. Study cap61 capacity constraints; implement shared initialization and repair.
+6. Study cap61 capacity constraints and shared repair; implement initialization.
 7. Complete NSGA-II and SPEA2 using the same problem-specific components.
 8. Implement and validate HV, then add experiments, statistics, and plots.
 
@@ -194,10 +235,11 @@ The complete plan contains `2 × 6 × 3 × 10 = 360` runs. `--plan` previews set
 only; it does not execute them. `analysis_instances` selects cap61, cap101, and
 cap121 for detailed comparisons across the three sizes.
 
-Before formal experiments, define shared initialization and repair, stopping and
-failure rules, common normalization bounds per instance, and a common HV reference
-point. The configuration's `null` reference point is unset and cannot be used to
-compute HV.
+Before formal experiments, implement shared initialization, integrate shared
+repair and its failure handling into both algorithms and the experiment
+configuration, and define stopping rules, common normalization bounds per
+instance, and a common HV reference point. The configuration's `null` reference
+point is unset and cannot be used to compute HV.
 
 This repository contains learning code and technical documentation, not the
 submission report. Experimental results, statistical conclusions, and the report
