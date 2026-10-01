@@ -1,246 +1,258 @@
-# ACIT4610 Assignment 2: Multi-objective CFLP
+# ACIT4610 Assignment 2: Multi-objective CFLP with MOEAs
 
-A project for learning and implementing multi-objective evolutionary algorithms
-for the Capacitated Facility Location Problem (CFLP). Its structure follows the
-previous JSSP project: data, a problem package, configurations, tests,
-documentation, and results.
+NSGA-II and SPEA2 search for facility locations and customer assignments that
+minimise **facility opening cost** and **customer allocation cost**, subject to
+capacity constraints. Group number: **Group-8**. Group members: **Zhongye Xue,
+Syed Mohammad Abdur-Rahman Tirmizey, Jakob Andreas Amtedal, Khoa Anh Huynh**.
 
-**The project currently supports all six required instances, data integrity
-checks, feasible-solution evaluation, shared capacity repair, and a
-one-generation NSGA-II walkthrough.** General population initialization, the
-complete NSGA-II loop, SPEA2, and hypervolume remain learning tasks. No formal
-benchmark experiment results have been generated.
+The sections below describe the intended algorithm design. Encoding, evaluation,
+variation, capacity repair, and NSGA-II selection are implemented. General
+initialization, the complete NSGA-II loop, SPEA2, and hypervolume are unfinished;
+**formal experiment results are pending**.
 
-## Quick start
+## 1. How the next generation is created
 
-Use Python 3.10 or newer. The current code uses only the standard library.
-From the repository root, run:
+Example configuration: `cap61`, population **50**, crossover probability **0.9**
+per parent pair, mutation probability **0.02** per gene, seed **0**, and a budget
+of **10,000 objective evaluations**, including initialization.
 
-```bash
-python3 learn_workflow.py
+Both algorithms share this preparation and offspring pipeline:
+
+```text
+Read cap61: 16 facilities, 50 customers
+    -> generate 50 chromosomes (50 facility IDs each)
+    -> decode assignments and repair capacity violations
+    -> evaluate opening cost f1 and allocation cost f2 separately
+
+Select parents -> single-point crossover -> per-gene mutation
+    -> decode and repair each child -> evaluate feasible children
 ```
 
-This combined walkthrough contains 12 `# %%` cells covering data, a small teaching
-example, one generation on cap101, and capacity constraints on cap61. It reuses
-`cflp/` modules; you do not need to execute the separate lessons first.
-Its evolution evaluation count is 16: 8 initial individuals and 8 offspring.
-Separate teaching examples before and after that demonstration are not included
-in this count. This is a learning walkthrough, not a full experimental run.
+### NSGA-II
 
-For the existing local checkout, first run `cd /home/xue/ACIT4610/CFLP`.
-After cloning elsewhere, use your own repository directory instead. Additional
-commands, all entered in a terminal:
+```text
+Start with the current population
+    -> calculate non-dominated ranks and crowding distances
+    -> select parents by binary tournaments
+    -> generate offspring using the shared pipeline
+    -> combine parents and offspring
+    -> recalculate ranks and crowding distances
+    -> keep complete fronts in rank order
+    -> fill remaining places from the next front by largest crowding distance
+    -> repeat within the evaluation budget
+    -> return non-dominated solutions from the final population
+```
+
+Parents can be selected more than once. Parent and offspring populations compete
+for survival, so **elitism is part of replacement**. Crowding distance promotes
+spread within a front; it is not an additional problem objective.
+
+### SPEA2
+
+```text
+Start with the current population and an initially empty archive
+    -> combine population and archive
+    -> calculate strength, raw fitness, and nearest-neighbour density
+    -> update the archive with non-dominated individuals
+    -> fill vacancies by fitness, or truncate an oversized archive by distance
+    -> select parents from the archive by binary tournaments
+    -> generate the next population using the shared pipeline
+    -> repeat within the evaluation budget
+    -> update the archive with the last evaluated population
+    -> return non-dominated solutions from the final archive
+```
+
+The external archive preserves elites. Its proposed capacity equals population
+size. Archive filling can include dominated individuals, so the final output
+must still be filtered for non-dominance.
+
+## 2. Algorithm design
+
+| Block | Design |
+| --- | --- |
+| Encoding | `a[j]` is the facility serving customer `j`, using zero-based IDs. Each chromosome has one gene per customer; cap61 has 50 genes with values 0–15. Used facilities are open; unused facilities are closed. |
+| Initialization | Planned: randomly select a nonempty subset of facilities, assign each customer to a random facility in that subset, then repair. Use a seeded random-number generator. |
+| NSGA-II selection | Binary tournaments prefer lower non-dominated rank, then larger crowding distance. Remaining ties are random. |
+| SPEA2 selection | Planned: binary tournaments on archive members prefer lower strength-based fitness plus density; remaining ties are random. |
+| Crossover | With probability `pc` per pair, exchange chromosome tails after a random cut. Otherwise copy the parents. Skip crossover for one-gene chromosomes. |
+| Mutation | Independently, with probability `pm` per gene, assign that customer to a different randomly selected facility. Skip mutation when only one facility exists. |
+| Repair | Relocate customers from overloaded facilities, prioritising a single move that resolves the overload. Details below. |
+| Evaluation | Calculate opening and allocation costs separately, only after checking feasibility. |
+| Replacement | NSGA-II selects survivors from parents and offspring; SPEA2 replaces the population with offspring while retaining its archive. |
+| Termination | Planned: stop at 10,000 objective evaluations, including initial individuals. Do not use a fixed generation count across different population sizes. |
+
+Crossover and mutation preserve valid facility IDs and one assignment per
+customer, but can violate capacities. Repair returns a separate chromosome and
+does not alter benchmark data. Initialization's subset-size rule and bounded
+reconstruction policy remain to be specified and implemented.
+
+### Objectives and feasibility
+
+For facility `i` and customer `j`, `F[i]` is the opening cost, `C[i][j]` is the
+allocation cost, `S[i]` is capacity, and `d[j]` is demand. Let `y[i]` indicate an
+open facility and `x[i][j]` indicate an assignment.
+
+```text
+Minimise f1 = sum_i F[i] * y[i]
+Minimise f2 = sum_i sum_j C[i][j] * x[i][j]
+
+Every customer is assigned exactly once:  sum_i x[i][j] = 1
+Assignments use open facilities only:    x[i][j] <= y[i]
+Facility capacities are respected:       sum_j d[j] * x[i][j] <= S[i] * y[i]
+```
+
+`C[i][j]` already covers the customer's entire demand; do not multiply it by
+`d[j]` again. Lower values are preferred for both objectives, which are not
+combined into a weighted sum. One solution dominates another if it is no worse
+in either objective and strictly better in at least one.
+
+NSGA-II uses non-dominated rank and crowding distance. In the planned SPEA2 design,
+strength counts dominated individuals, raw fitness sums dominators' strengths,
+and density penalises crowded regions. The density neighbour index and distance
+scaling remain to be fixed before experiments.
+
+### Decoding and capacity repair
+
+Decoding groups customers by their facility genes, identifies open facilities,
+and sums assigned demands. Repair then applies:
+
+```text
+Choose the facility with the largest overload E
+    -> find customers with at least one feasible destination
+    -> if any has demand >= E, choose the smallest such demand
+    -> otherwise choose the largest movable demand
+    -> move to the destination with least remaining capacity after assignment
+    -> update loads and repeat until no facility is overloaded
+```
+
+Unused facilities are eligible destinations. All ties use the lowest relevant
+ID. The rule aims to limit gene changes, without guaranteeing a global minimum.
+Destinations remain feasible, so each moved customer is relocated at most once.
+Invalid encodings or a lack of feasible moves raise `ValueError`; caller-side
+reconstruction and retry handling are not yet implemented.
+
+### Example: cap61
+
+The initial chromosome is:
+
+```text
+[2, 3, 3, 2, 3, 3, 2, 2, 3, 3,
+ 0, 3, 1, 3, 3, 3, 3, 2, 3, 3,
+ 0, 3, 3, 3, 3, 3, 1, 3, 3, 3,
+ 3, 3, 3, 0, 3, 0, 1, 2, 3, 3,
+ 0, 2, 3, 3, 2, 3, 3, 3, 2, 3]
+```
+
+Facility 0 carries **20,492**, exceeding its **15,000** capacity by **5,492**.
+Customer 10 has demand **5,495**, and facility 1 has exactly **5,495** spare
+capacity. Repair changes only `a[10]` from **0 to 1**.
+
+| Facility | Open after repair | Customers after repair | Load before → after | Capacity |
+| --- | ---: | --- | ---: | ---: |
+| 0 | 1 | 20, 33, 35, 40 | 20,492 → 14,997 | 15,000 |
+| 1 | 1 | 10, 12, 26, 36 | 9,505 → 15,000 | 15,000 |
+| 2 | 1 | 0, 3, 6, 7, 17, 37, 41, 44, 48 | 14,993 → 14,993 | 15,000 |
+| 3 | 1 | 1, 2, 4, 5, 8, 9, 11, 13, 14, 15, 16, 18, 19, 21, 22, 23, 24, 25, 27, 28, 29, 30, 31, 32, 34, 38, 39, 42, 43, 45, 46, 47, 49 | 13,278 → 13,278 | 15,000 |
+| 4–15 | All 0 | None | All 0 | 15,000 each |
+
+Every customer appears exactly once, and no facility exceeds capacity. Using the
+original costs, **f1 = 4 × 7,500 = 30,000** and **f2 = 1,864,204.2125**.
+This is a worked feasibility example, not a benchmark result or an optimality claim.
+
+## 3. Instances and experiment parameters
+
+| Category | Instances | Facilities × customers | Detailed comparison |
+| --- | --- | --- | --- |
+| Small | cap61, cap62 | 16 × 50 | cap61 |
+| Medium | cap101, cap102 | 25 × 50 | cap101 |
+| Large | cap121, cap122 | 50 × 50 | cap121 |
+
+The original [OR-Library](https://people.brunel.ac.uk/~mastjjb/jeb/orlib/capinfo.html)
+files are bundled in `data/or_library`; see [data details](data/README.md).
+Costs, capacities, and demands remain unchanged. All six instances are included
+in experiments; the three focus instances are selected for detailed discussion.
+
+| Configuration | Parameter set | Population | Evaluation budget | Crossover per pair | Mutation per gene |
+| --- | --- | ---: | ---: | ---: | ---: |
+| A | smaller_population | 50 | 10,000 | 0.9 | 0.02 |
+| B | reference | 100 | 10,000 | 0.9 | 0.02 |
+| C | larger_population | 200 | 10,000 | 0.9 | 0.02 |
+
+[configs/experiments.json](configs/experiments.json) contains the proposed settings.
+Both algorithms use seeds **0–9**, giving **2 algorithms × 6 instances × 3
+configurations × 10 independent runs = 360 runs**. SPEA2 archive capacities are
+provisionally **50, 100, and 200**, respectively.
+
+Each evaluation produces both objective values and counts once against the
+budget, including initialization; objective caching is disabled in the proposed
+configuration. The full loops must handle the remaining budget without
+overshooting. Population size varies while crossover, mutation, and evaluation
+budget remain fixed. For SPEA2, archive size changes with population size, so
+those two effects cannot be separated by this design.
+
+Hardware/software, timing boundaries, initialization details, and handling of
+failed offspring: **[Pending]**. The configuration still contains initialization
+and repair integration placeholders; it is not an executable experiment runner.
+
+## 4. Results and evaluation
+
+**No formal runs have been completed.** Dashes below mean pending results, not
+zero values. Complete this table for each of the six instances: **36 rows in
+total**, with each row summarising 10 independent runs.
+
+Instance: **[Pending]**
+
+| Config | MOEA | HV mean | HV SD | HV best | HV worst | ND mean | Time mean (s) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| A | NSGA-II | — | — | — | — | — | — |
+| A | SPEA2 | — | — | — | — | — | — |
+| B | NSGA-II | — | — | — | — | — | — |
+| B | SPEA2 | — | — | — | — | — | — |
+| C | NSGA-II | — | — | — | — | — | — |
+| C | SPEA2 | — | — | — | — | — | — |
+
+- **Quality:** compare hypervolume (HV); higher is better. Report mean, sample
+  standard deviation, best, and worst across independent runs.
+- **Comparability:** use common normalization bounds and one fixed HV reference
+  point per instance across both algorithms and all configurations. Numerical
+  bounds, reference points, and HV implementation: **[Pending]**.
+- **Diversity:** report the number of distinct non-dominated objective vectors
+  (ND). Duplicate objective vectors count once; a larger ND alone does not prove
+  better solution quality.
+- **Efficiency:** compare mean runtime alongside solution quality. Hardware and
+  timing scope: **[Pending]**.
+- **Statistical comparison:** test, pairing rationale, significance level,
+  multiple-comparison handling, and effect sizes: **[Pending]**.
+
+| Output | Purpose | Result |
+| --- | --- | --- |
+| Summary and runtime tables | Compare all 36 algorithm/instance/configuration combinations | [Pending] |
+| Per-run records | Retain seeds, parameters, objectives, HV, ND, and runtime | [Pending] |
+| Small-instance Pareto plot | Compare NSGA-II and SPEA2 on cap61 | [Pending] |
+| Medium-instance Pareto plot | Compare NSGA-II and SPEA2 on cap101 | [Pending] |
+| Large-instance Pareto plot | Compare NSGA-II and SPEA2 on cap121 | [Pending] |
+
+Pareto plots will use `f1` on the horizontal axis and `f2` on the vertical axis.
+The configuration and run-selection or pooling rule must accompany each plot.
+
+**Discussion and conclusions:** [Pending experimental evidence on solution
+quality, diversity, runtime, and the effects of configuration and instance size.]
+
+## 5. Reproduce the project
+
+Use Python 3.10 or newer. Current code uses only the standard library. From the
+repository root:
 
 ```bash
-python3 -m cflp --all
-python3 -m cflp --verify-data
-python3 -m cflp --instance cap61
-python3 learn_data.py
-python3 learn_solution.py
-python3 learn_cap101.py
-python3 learn_population.py
-python3 learn_selection.py
-python3 learn_offspring.py
-python3 learn_environment.py
-python3 learn_cap61.py
 python3 -m unittest discover -s tests -v
+python3 learn_workflow.py
 python3 -m cflp --plan
 ```
 
-The `learn_*.py` files support execution in cells using an editor that recognizes
-`# %%`. Run cells in order because later cells depend on earlier variables.
-Alternatively, start `python3` from the repository root and paste Python code
-into its `>>>` prompt. Do not paste Python statements such as `from ...` directly
-into a Bash shell.
+These commands run existing tests, a learning walkthrough, and a configuration
+preview. **The full 360-run reproduction command is pending.**
 
-An isolated environment is optional:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-```
-
-## Structure and implementation status
-
-```text
-CFLP/
-├── data/
-│   ├── or_library/            Six unmodified official instances
-│   ├── checksums.json         Source URLs, retrieval dates, sizes, SHA-256 hashes
-│   └── README.md              Source format and field mapping
-├── cflp/
-│   ├── data.py                Implemented: loading and data validation
-│   ├── representation.py      Implemented: assignment encoding and open facilities
-│   ├── feasibility.py         Implemented: necessary conditions and capacity checks
-│   ├── evaluation.py          Implemented: two objectives for feasible assignments
-│   ├── initialization.py      To implement: shared population initialization
-│   ├── repair.py              Implemented: deterministic shared capacity repair
-│   ├── operators.py           Implemented: single-point crossover and per-gene mutation
-│   ├── pareto.py              Implemented: dominance and non-dominated sorting
-│   ├── nsga2.py               Selection implemented; multi-generation loop unfinished
-│   ├── spea2.py               To implement: SPEA2
-│   ├── metrics.py             To implement: two-dimensional hypervolume
-│   ├── statistics.py          Statistical analysis responsibilities
-│   ├── plotting.py            Plotting responsibilities
-│   ├── experiments.py         Configuration preview implemented; execution unfinished
-│   └── __main__.py            Data inspection and experiment-plan entry point
-├── configs/experiments.json   Three proposed configurations and ten random seeds
-├── learn_workflow.py          Combined walkthrough in 12 cells
-├── learn_data.py              Read and inspect the real cap61 data
-├── learn_solution.py          Encoding, constraints, objectives, and small enumeration
-├── learn_cap101.py            Real assignments, costs, and solution comparisons
-├── learn_population.py        Eight random cap101 individuals and non-dominated sorting
-├── learn_selection.py         Crowding distance and binary tournament selection
-├── learn_offspring.py         Pairing, crossover, mutation, and offspring evaluation
-├── learn_environment.py       Merge the original population and offspring; select survivors
-├── learn_cap61.py             Capacity checks, feasible construction, and overload example
-├── nsgs2.py                   Data-reading practice using the selected instance
-├── docs/learning.md           Learning sequence, exercises, and completion criteria
-├── tests/                    Checks for data, model, and implemented algorithm operations
-├── results/                  Destination for future experiment outputs
-└── requirements.txt           No third-party dependencies currently required
-```
-
-## Required benchmark data
-
-The updated assignment uses:
-
-| Category | Instances | Facilities m | Customers n |
-|---|---|---:|---:|
-| Small | cap61, cap62 | 16 | 50 |
-| Medium | cap101, cap102 | 25 | 50 |
-| Large | cap121, cap122 | 50 | 50 |
-
-Source: [J. E. Beasley's OR-Library](https://people.brunel.ac.uk/~mastjjb/jeb/orlib/capinfo.html).
-Original file bytes are stored in `data/or_library/`; costs, capacities, and
-demands have not been changed. See `data/checksums.json` for exact download URLs
-and integrity hashes. Git attributes preserve the raw benchmark line endings.
-
-```python
-from cflp.data import load_instance
-
-instance = load_instance("cap61")
-print(instance.n_facilities, instance.n_customers)  # 16 50
-print(instance.capacities[0])                      # 15000.0
-print(instance.fixed_costs[0])                     # 7500.0
-print(instance.demands[0])                         # 146.0
-print(instance.allocation_costs[0][0])             # 6739.725
-```
-
-`allocation_costs[i][j]` is the cost of serving **all demand** of customer j from
-facility i. Do not multiply it by `demands[j]` again. The source groups costs by
-customer; the reader stores them by facility and customer. This changes the
-in-memory layout, not the numeric values. Instance data uses immutable tuples;
-candidate assignments are stored separately.
-
-Both small instances have facility capacity 15000, and complete feasible
-assignments have been verified. However, individual candidates can still exceed
-capacity. Check candidates after initialization, crossover, and mutation, and
-handle infeasibility as required by the assignment. Do not split customer
-demand, omit customers, or alter the OR-Library data. Shared capacity repair is
-implemented; general initialization remains unfinished. Run
-`python3 learn_cap61.py` to explore feasible construction and an overloaded
-candidate.
-
-## Representation and objectives
-
-The assignment list uses `assignment[j] = i`, with zero-based IDs. Each customer
-has exactly one serving facility. Used facilities are open; unused facilities
-are closed. With nonnegative opening costs, opening unused facilities cannot
-improve the objectives. Unused facilities with zero opening cost could produce
-equivalent objective values; this encoding does not represent them separately.
-
-`evaluate(instance, assignment)` checks the encoding and capacities before
-returning `(f1, f2)`:
-
-- `f1 = sum(F[i] for i in opened_facilities)`: count each opening cost once.
-- `f2 = sum(C[assignment[j]][j] for j in customers)`: no extra demand multiplier.
-- Facility load is the sum of its assigned customers' demands and must not exceed
-  that facility's capacity.
-
-Invalid solutions raise `ValueError` rather than receiving feasible objective
-values. The small example in `learn_solution.py` is for learning only; formal
-experiments must use the six required official instances.
-
-## Capacity repair
-
-`repair_assignment(instance, assignment, rng=None)` restores capacity feasibility
-while prioritising fewer gene changes. It uses the following deterministic rule:
-
-1. Select the facility with the largest overload.
-2. Consider only customers that another facility can accommodate completely.
-3. Choose the smallest-demand customer whose removal eliminates the overload.
-   If none qualifies, choose the largest-demand customer that can be moved.
-4. Choose the destination with the least remaining capacity after receiving that
-   customer. Unused facilities are eligible.
-5. Update the assignment and loads, then repeat until feasible.
-
-All ties use the lowest relevant facility or customer ID. The function returns
-a separate list and leaves the original assignment and benchmark data intact.
-The optional `rng` argument supports the shared operator interface but is not
-consumed. Invalid encodings or a lack of feasible moves raise `ValueError`;
-failure to find a move does not prove the instance is infeasible. Destinations
-never become overloaded, so each customer moves at most once. The heuristic
-does not guarantee globally minimum gene changes or objective values.
-
-```python
-from cflp.data import load_instance
-from cflp.repair import repair_assignment
-from cflp.evaluation import evaluate
-
-instance = load_instance("cap61")
-assignment = [0] * instance.n_customers
-repaired = repair_assignment(instance, assignment)
-print(evaluate(instance, repaired))
-```
-
-In the report example, facility 0 has load 20,492 and facility 1 has load 9,505.
-Moving customer 10 (demand 5,495) from facility 0 to facility 1 repairs the
-5,492 overload with one gene change, leaving loads of 14,997 and 15,000.
-
-The repair function is available for initialization and variation. Integrating
-it into the complete NSGA-II and SPEA2 loops remains part of those unfinished
-algorithms; the existing learning walkthroughs have not been changed.
-
-## Learning sequence
-
-Use [the learning guide](docs/learning.md), either with the combined walkthrough
-or with the separate lessons:
-
-1. Read a facility and customer record from cap61.
-2. Calculate the teaching example's loads and objectives by hand.
-3. Enumerate its 27 assignments and identify the non-dominated solutions.
-4. Study cap101 solution comparisons, population generation, and sorting.
-5. Follow parent selection, variation, and one environmental selection step.
-6. Study cap61 capacity constraints and shared repair; implement initialization.
-7. Complete NSGA-II and SPEA2 using the same problem-specific components.
-8. Implement and validate HV, then add experiments, statistics, and plots.
-
-Unimplemented functions raise `NotImplementedError` so placeholders cannot be
-mistaken for working optimizers. NSGA-II and SPEA2 are the planned algorithms;
-the final choice must be consistent with the algorithms covered in class.
-
-## Proposed experiment configurations
-
-`configs/experiments.json` specifies six instances, two algorithms, three proposed
-configurations, and seeds 0-9. Population sizes are 50, 100, and 200. All share a
-crossover probability of 0.9 per parent pair, a mutation probability of 0.02 per
-customer gene, and an objective evaluation budget of 10000 including
-initialization. These are editable learning settings, not tuned or benchmarked
-configurations. SPEA2 archive size is provisionally equal to population size.
-Count every objective evaluation against the budget.
-
-The complete plan contains `2 × 6 × 3 × 10 = 360` runs. `--plan` previews settings
-only; it does not execute them. `analysis_instances` selects cap61, cap101, and
-cap121 for detailed comparisons across the three sizes.
-
-Before formal experiments, implement shared initialization, integrate shared
-repair and its failure handling into both algorithms and the experiment
-configuration, and define stopping rules, common normalization bounds per
-instance, and a common HV reference point. The configuration's `null` reference
-point is unset and cannot be used to compute HV.
-
-This repository contains learning code and technical documentation, not the
-submission report. Experimental results, statistical conclusions, and the report
-remain to be completed after the algorithms are implemented.
+The main components are `representation.py` (encoding), `evaluation.py`
+(objectives), `operators.py` (variation), `repair.py` (capacity repair), and
+`nsga2.py` / `spea2.py` (algorithm logic), under `cflp/`. Further learning notes
+are in [docs/learning.md](docs/learning.md).
