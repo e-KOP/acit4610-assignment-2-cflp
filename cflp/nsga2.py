@@ -6,8 +6,15 @@ shared variation/repair/evaluation -> elitist selection from parents + offspring
 
 from math import inf
 from numbers import Integral
+from random import Random
 
 from .pareto import dominates, nondominated_sort
+from .evaluation import evaluate
+from .operators import crossover, mutate
+from .repair import repair_assignment
+from .initialization import initialize_population
+
+
 
 
 def crowding_distance(objective_vectors, front):
@@ -98,6 +105,307 @@ def environmental_selection(objective_vectors, population_size, rng):
     return selected
 
 
+# ==========================
+# Parent selection
+# ==========================
+
+
+def select_parents(
+    population,
+    ranks,
+    distances,
+    number_of_parents,
+    rng,
+):
+    """
+    Select parents using binary tournament selection.
+
+    Two different individuals are sampled for each tournament.
+    Lower non-dominated rank is preferred. If the ranks are equal,
+    the individual with the larger crowding distance is preferred.
+    Remaining ties are resolved randomly.
+    """
+
+    parents = []
+
+    for _ in range(number_of_parents):
+
+        first, second = rng.sample(
+            range(len(population)),
+            2,
+        )
+
+        winner = tournament_winner(
+            first,
+            second,
+            ranks,
+            distances,
+            rng,
+        )
+
+        parents.append(
+            list(population[winner])
+        )
+
+    return parents
+
+# ==========================
+# Offspring generation
+# ==========================
+
+
+# ==========================
+# Offspring generation
+# ==========================
+
+
+def generate_offspring(
+    instance,
+    parents,
+    crossover_probability,
+    mutation_probability,
+    rng,
+    number_of_offspring=None,
+    max_attempts_per_child=50,
+):
+    """
+    Generate feasible offspring from selected parents.
+
+    Parents are paired in order. Each pair may undergo single-point
+    crossover, followed by per-gene mutation. Every child is repaired
+    before evaluation so only feasible offspring are returned.
+
+    If repair fails for a candidate, variation is attempted again.
+    The number of retries is limited to avoid an infinite loop.
+
+    If number_of_offspring is given, generation stops after producing
+    that many children.
+    """
+
+    offspring = []
+    objective_vectors = []
+
+    if number_of_offspring is None:
+        number_of_offspring = len(parents)
+
+    parent_index = 0
+
+    while len(offspring) < number_of_offspring:
+
+        parent_a = parents[parent_index % len(parents)]
+        parent_b = parents[(parent_index + 1) % len(parents)]
+
+        children_added = 0
+
+        for _ in range(max_attempts_per_child):
+
+            child_a, child_b = crossover(
+                parent_a,
+                parent_b,
+                crossover_probability,
+                rng,
+            )
+
+            children = [child_a, child_b]
+
+            for child in children:
+
+                if len(offspring) >= number_of_offspring:
+                    break
+
+                child = mutate(
+                    child,
+                    instance.n_facilities,
+                    mutation_probability,
+                    rng,
+                )
+
+                try:
+                    child = repair_assignment(
+                        instance,
+                        child,
+                        rng,
+                    )
+
+                except ValueError:
+                    # This candidate could not be repaired.
+                    # Try another variation of the parent pair.
+                    continue
+
+                objectives = evaluate(
+                    instance,
+                    child,
+                )
+
+                offspring.append(child)
+                objective_vectors.append(objectives)
+                children_added += 1
+
+            if children_added > 0:
+                break
+
+        if children_added == 0:
+            raise ValueError(
+                "Could not generate a feasible offspring "
+                f"after {max_attempts_per_child} attempts."
+            )
+
+        parent_index += 2
+
+    return offspring, objective_vectors
+
+# ==========================
+# Complete NSGA-II
+# ==========================
+
+
 def run(instance, config, seed):
-    """Return final feasible solutions and run metadata within the evaluation budget."""
-    raise NotImplementedError("NSGA-II is a learning placeholder, not a working optimizer yet.")
+    """
+    Run NSGA-II within the specified objective-evaluation budget.
+
+    Initialization counts toward the evaluation budget. Each generation
+    ranks the current population, selects parents with binary tournaments,
+    generates feasible offspring, and applies elitist environmental
+    selection to the combined parent and offspring population.
+
+    Returns the final non-dominated solutions together with run metadata.
+    """
+
+    rng = Random(seed)
+
+    population_size = config["population_size"]
+    crossover_probability = config["crossover_probability_per_pair"]
+    mutation_probability = config["mutation_probability_per_gene"]
+    max_evaluations = config["max_objective_evaluations"]
+
+    if population_size < 2:
+        raise ValueError(
+            "NSGA-II requires a population size of at least 2."
+        )
+
+    if max_evaluations < population_size:
+        raise ValueError(
+            "Evaluation budget must be at least the population size."
+        )
+
+    # ==========================
+    # Initial population
+    # ==========================
+
+    population = initialize_population(
+        instance,
+        population_size,
+        rng,
+    )
+
+    objective_vectors = [
+        evaluate(instance, individual)
+        for individual in population
+    ]
+
+    evaluations = len(population)
+
+    # ==========================
+    # Evolution loop
+    # ==========================
+
+    while evaluations < max_evaluations:
+
+        _, ranks, distances = rank_and_crowding(
+            objective_vectors
+        )
+
+        remaining_evaluations = (
+            max_evaluations - evaluations
+        )
+
+        offspring_count = min(
+            population_size,
+            remaining_evaluations,
+        )
+
+        # A mating pool the same size as the number of children
+        # required in this generation.
+        number_of_parents = max(
+            2,
+            offspring_count,
+        )
+
+        parents = select_parents(
+            population,
+            ranks,
+            distances,
+            number_of_parents,
+            rng,
+        )
+
+        offspring, offspring_objectives = generate_offspring(
+            instance,
+            parents,
+            crossover_probability,
+            mutation_probability,
+            rng,
+            number_of_offspring=offspring_count,
+        )
+
+        evaluations += len(offspring)
+
+        # ==========================
+        # Elitist replacement
+        # ==========================
+
+        combined_population = (
+            population + offspring
+        )
+
+        combined_objectives = (
+            objective_vectors + offspring_objectives
+        )
+
+        selected_indices = environmental_selection(
+            combined_objectives,
+            population_size,
+            rng,
+        )
+
+        population = [
+            combined_population[index]
+            for index in selected_indices
+        ]
+
+        objective_vectors = [
+            combined_objectives[index]
+            for index in selected_indices
+        ]
+
+    # ==========================
+    # Final non-dominated set
+    # ==========================
+
+    fronts = nondominated_sort(
+        objective_vectors
+    )
+
+    final_indices = (
+        fronts[0]
+        if fronts
+        else []
+    )
+
+    final_population = [
+        population[index]
+        for index in final_indices
+    ]
+
+    final_objectives = [
+        objective_vectors[index]
+        for index in final_indices
+    ]
+
+    return {
+        "algorithm": "nsga2",
+        "seed": seed,
+        "evaluations": evaluations,
+        "population": final_population,
+        "objectives": final_objectives,
+    }
