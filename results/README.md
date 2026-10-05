@@ -1,11 +1,11 @@
-# Experiment outputs
+# Generated experiment output
 
-No optimizer runs or benchmark results have been generated yet.
+Run `python3 -m cflp --batch --algorithm nsga2 --output results/nsga2 --resume`.
+Each output directory holds per-run JSON, a descriptive summary CSV, a completion
+status JSON, and pooled-front SVG scatter plots. See the root README for exact
+metric, timing, and plotting conventions.
 
-When implementing the experiment runner, save one row per run containing:
-instance, algorithm, configuration, seed, settings, evaluation count, runtime,
-HV, and unique non-dominated objective count. Also save the final assignments
-and their two objective values, normalization bounds and HV reference point.
-
-Store run outputs here. They are ignored by Git until you deliberately select
-which reproducible outputs to publish. Do not mix teaching data with benchmarks.
+These directories are ignored by Git. A partial batch or a pilot budget must not
+be represented as a completed formal experiment. Preserve raw run records so
+metrics and plots can be regenerated. SPEA2 and inferential comparisons remain
+pending; no second-algorithm results are fabricated.

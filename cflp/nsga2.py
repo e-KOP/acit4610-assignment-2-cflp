@@ -1,4 +1,4 @@
-"""NSGA-II selection building blocks; the evolution loop remains a learning task.
+"""NSGA-II with shared feasible variation and an exact evaluation budget.
 
 Order: nondominated sorting -> crowding distance -> tournament selection ->
 shared variation/repair/evaluation -> elitist selection from parents + offspring.
@@ -10,8 +10,8 @@ from random import Random
 
 from .pareto import dominates, nondominated_sort
 from .evaluation import evaluate
-from .operators import crossover, mutate
-from .repair import repair_assignment
+from .offspring import generate_offspring
+from .configuration import validate_run_config
 from .initialization import initialize_population
 
 
@@ -149,116 +149,6 @@ def select_parents(
 
     return parents
 
-# ==========================
-# Offspring generation
-# ==========================
-
-
-# ==========================
-# Offspring generation
-# ==========================
-
-
-def generate_offspring(
-    instance,
-    parents,
-    crossover_probability,
-    mutation_probability,
-    rng,
-    number_of_offspring=None,
-    max_attempts_per_child=50,
-):
-    """
-    Generate feasible offspring from selected parents.
-
-    Parents are paired in order. Each pair may undergo single-point
-    crossover, followed by per-gene mutation. Every child is repaired
-    before evaluation so only feasible offspring are returned.
-
-    If repair fails for a candidate, variation is attempted again.
-    The number of retries is limited to avoid an infinite loop.
-
-    If number_of_offspring is given, generation stops after producing
-    that many children.
-    """
-
-    offspring = []
-    objective_vectors = []
-
-    if number_of_offspring is None:
-        number_of_offspring = len(parents)
-
-    parent_index = 0
-
-    while len(offspring) < number_of_offspring:
-
-        parent_a = parents[parent_index % len(parents)]
-        parent_b = parents[(parent_index + 1) % len(parents)]
-
-        children_added = 0
-
-        for _ in range(max_attempts_per_child):
-
-            child_a, child_b = crossover(
-                parent_a,
-                parent_b,
-                crossover_probability,
-                rng,
-            )
-
-            children = [child_a, child_b]
-
-            for child in children:
-
-                if len(offspring) >= number_of_offspring:
-                    break
-
-                child = mutate(
-                    child,
-                    instance.n_facilities,
-                    mutation_probability,
-                    rng,
-                )
-
-                try:
-                    child = repair_assignment(
-                        instance,
-                        child,
-                        rng,
-                    )
-
-                except ValueError:
-                    # This candidate could not be repaired.
-                    # Try another variation of the parent pair.
-                    continue
-
-                objectives = evaluate(
-                    instance,
-                    child,
-                )
-
-                offspring.append(child)
-                objective_vectors.append(objectives)
-                children_added += 1
-
-            if children_added > 0:
-                break
-
-        if children_added == 0:
-            raise ValueError(
-                "Could not generate a feasible offspring "
-                f"after {max_attempts_per_child} attempts."
-            )
-
-        parent_index += 2
-
-    return offspring, objective_vectors
-
-# ==========================
-# Complete NSGA-II
-# ==========================
-
-
 def run(instance, config, seed):
     """
     Run NSGA-II within the specified objective-evaluation budget.
@@ -271,6 +161,7 @@ def run(instance, config, seed):
     Returns the final non-dominated solutions together with run metadata.
     """
 
+    validate_run_config(config)
     rng = Random(seed)
 
     population_size = config["population_size"]
@@ -296,6 +187,7 @@ def run(instance, config, seed):
         instance,
         population_size,
         rng,
+        max_attempts_per_individual=config.get("initialization_attempts", 100),
     )
 
     objective_vectors = [
@@ -304,6 +196,7 @@ def run(instance, config, seed):
     ]
 
     evaluations = len(population)
+    generations = 0
 
     # ==========================
     # Evolution loop
@@ -346,9 +239,11 @@ def run(instance, config, seed):
             mutation_probability,
             rng,
             number_of_offspring=offspring_count,
+            max_attempts_per_child=config.get("offspring_attempts", 50),
         )
 
         evaluations += len(offspring)
+        generations += 1
 
         # ==========================
         # Elitist replacement
@@ -404,6 +299,8 @@ def run(instance, config, seed):
 
     return {
         "algorithm": "nsga2",
+        "status": "completed",
+        "generations": generations,
         "seed": seed,
         "evaluations": evaluations,
         "population": final_population,

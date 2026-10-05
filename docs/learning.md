@@ -2,7 +2,7 @@
 
 Data loading and the basic model are implemented. Each step below has a small,
 verifiable result. Start with working examples instead of trying to run the
-unfinished algorithms together.
+both algorithms together. NSGA-II now runs end to end; SPEA2 remains to be implemented.
 
 ## Combined walkthrough
 
@@ -20,7 +20,7 @@ rerun from the relevant initialization cell onward. Cell 10 completes one
 generation update. Its 16 evaluations count only that evolution demonstration;
 separate teaching examples before and after it also call the evaluator.
 Do not apply the cap101 initialization directly to cap61. General capacity-aware
-initialization and repair remain to be implemented.
+initialization and repair are implemented in their shared modules.
 
 ## Reading data
 
@@ -90,8 +90,8 @@ each with 50 customers. Each individual first selects a random facility subset,
 then randomly assigns customers within it. Only used facilities contribute to
 opening cost.
 
-This teaching initialization relies on cap101's large capacities; general
-capacity-constrained initialization is still unfinished. The expected fronts are:
+This teaching initialization relies on cap101's large capacities; the formal initializer
+uses capacity-aware randomized best-fit construction instead. The expected fronts are:
 
 | Front | Individual IDs |
 |---|---|
@@ -154,7 +154,7 @@ duplicate individuals still count as separate evaluations.
 
 Offspring are not guaranteed to differ from their parents or have better costs.
 Single-point crossover preserves the encoding, not capacity feasibility in
-general. Shared repair is still unfinished. This lesson leaves the original
+general. Shared repair is implemented in `cflp/repair.py`. This lesson leaves the original
 population intact; environmental selection is next.
 
 ## Environmental selection: one generation update
@@ -202,13 +202,12 @@ original OR-Library values.
 
 ## Shared initialization and repair
 
-Implement `initialization.py` using the supplied `random.Random(seed)` rather
-than modifying global random state throughout the code. One starting point is
-to order customers by demand and choose facilities with sufficient remaining
-capacity, with bounded retries or reassignment when an attempt fails.
+Read `initialization.py`: it uses one supplied random generator, demand-descending
+construction, randomized equal-capacity ties, and a best-three candidate list.
+Read `repair.py` next and then `offspring.py` for bounded variation retries.
 
-Sufficient total capacity is necessary but not sufficient. Define failure
-handling in `repair.py`; do not retry forever or reduce demands to make solutions
+Sufficient total capacity is necessary but not sufficient. Study failure
+handling in `repair.py` and its caller; do not retry forever or reduce demands to make solutions
 fit. Use necessary conditions to identify proven-infeasible instances, then
 validate every constructed candidate with `check_feasibility`. Record and handle
 failures explicitly. Finding a feasible solution is not evidence of good cost.
@@ -237,7 +236,7 @@ counts alone do not establish equal computational budgets.
 
 ## Metrics, experiments, and analysis
 
-Implement `metrics.py`. Two-dimensional HV is the area of a union of rectangles;
+Read the implemented `metrics.py`. Two-dimensional HV is the area of a union of rectangles;
 overlap must not be counted twice. First verify that point `(2, 3)` with reference
 `(5, 6)` gives HV 9, then check overlapping rectangles. All comparisons for an
 instance need common normalization and a common reference point. Do not normalize
@@ -245,8 +244,8 @@ each run separately or treat OR-Library's single-objective optimum as the true
 two-objective front.
 
 Use `python3 -m cflp --plan` to inspect proposed experiments. The actual runner in
-`experiments.py` still needs to execute and record each instance, algorithm,
-configuration, and seed. A plan is not a completed experiment. Use consistent
+`experiments.py` executes and records each instance, algorithm, configuration,
+and seed; see README for `--run`, `--batch`, and `--summarize` commands. A plan is not a completed experiment. Use consistent
 timing boundaries and save raw per-run results for means and sample standard
 deviations. Choose statistical tests and multiple-comparison handling according
 to the actual independence or pairing design.
@@ -260,3 +259,19 @@ python3 -m unittest discover -s tests -v
 As development continues, validate meaningful edge cases: zero objective range
 in crowding, duplicate HV points, repair failure, archive overflow, and an
 insufficient remaining evaluation budget for a full offspring batch.
+
+## Running the complete NSGA-II pipeline
+
+After the lessons, read `nsga2.run`, then `experiments.run_experiment`. Try:
+
+```bash
+python3 -m cflp --run --instance cap61 --budget 500 --output results/learning
+python3 -m cflp --summarize --output results/learning
+```
+
+Inspect the saved assignments and objectives, then the HV/ND and runtime fields.
+The SVG plot uses raw costs; HV uses the fixed instance-derived scaling recorded
+in JSON. A 500-evaluation teaching run is not a formal 10,000-evaluation run.
+Do not reset the random seed inside the evolution loop. SPEA2 will reuse the
+shared initializer, offspring pipeline, runner, and metrics after its archive
+and fitness logic are implemented.

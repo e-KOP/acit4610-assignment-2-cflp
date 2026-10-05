@@ -60,6 +60,8 @@ def create_individual(instance, rng):
             )
 
         # Prefer facilities that leave less unused capacity, best fit heuristic which reduces fragmented capacity
+        # Randomize equal-capacity ties before stable best-fit sorting.
+        rng.shuffle(feasible_facilities)
         feasible_facilities = sorted(
             feasible_facilities,
             key=lambda facility:
