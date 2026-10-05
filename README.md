@@ -318,7 +318,7 @@ separate SVG plots produced by `--summarize`, the plotted set is the non-dominat
 completed runs, explicitly labelled **pooled**. This is not a typical run and is
 not used to calculate per-run HV statistics. The runner generates 18 SVG plots
 for NSGA-II and can overlay both algorithms when SPEA2 results are available.
-`plot_results.py` also generates three presentation figures (cap61, cap101,
+`python3 -m cflp --plot` also generates three presentation figures (cap61, cap101,
 and cap121), each with A/B/C panels on shared axes. Thin colored lines show
 the 10 individual final fronts, one per seed, without a pooled overlay.
 Lines guide the eye and do not imply feasible solutions
@@ -362,7 +362,6 @@ repository root:
 ```bash
 python3 -m unittest discover -s tests -v
 python3 -m cflp --verify-data
-python3 learn_workflow.py
 python3 -m cflp --plan
 
 # One complete NSGA-II run
@@ -376,17 +375,20 @@ python3 -m cflp --summarize --output results/nsga2
 
 # Export three A/B/C-panel figures, keeping SPEA2 empty until available
 python3 -m pip install -r requirements-plotting.txt
-python3 plot_results.py --input results/nsga2
+python3 -m cflp --plot --output results/nsga2
 ```
 
 The current validation includes **48 passing tests**, unchanged benchmark
-checksums, all nine learning scripts, and 180 completed NSGA-II runs. Reusing the
+checksums, and 180 completed NSGA-II runs. Reusing the
 full completed batch was checked to preserve every saved run record.
 
 - `--run` selects one configuration and seed; defaults are cap61, `reference`,
   seed 0, and NSGA-II. `--batch` uses all configurations and seeds 0–9; add
   `--instance cap61` to restrict it to 30 runs. Configuration and seed flags
   apply to single runs only.
+- `--plot` exports the three focus-instance figures from saved records under
+  `--output`, writing PNG/PDF/SVG into its `figures/` directory. Add
+  `--instance cap61` to export one instance. It does not rerun the optimizer.
 - `--budget 500` is available for learning or pilot runs. Use a separate output
   directory so pilot results are not mixed with the 10,000-evaluation experiment.
 - `--resume` reuses completed records only when parameters, seed, source hash,
@@ -408,8 +410,7 @@ The main components remain `representation.py` (encoding), `evaluation.py`
 `nsga2.py` / `spea2.py` (algorithm logic), under `cflp/`. Shared initialization is
 in `initialization.py`; the shared child pipeline is in `offspring.py`. The
 runner, metrics, summaries, and plots are in `experiments.py`, `metrics.py`,
-`statistics.py`, and `plotting.py`. Further learning notes are in
-[docs/learning.md](docs/learning.md).
+`statistics.py`, and `plotting.py`.
 
 For SPEA2 integration, keep `run(instance, config, seed)` and return the same
 result contract:

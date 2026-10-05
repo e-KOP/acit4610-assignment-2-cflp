@@ -1,2 +1,2 @@
-# Optional dependency for plot_results.py; the optimizer remains standard-library only.
+# Optional dependency for python3 -m cflp --plot; the optimizer remains standard-library only.
 matplotlib==3.6.3

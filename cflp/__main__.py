@@ -28,6 +28,7 @@ def main():
     actions.add_argument("--run", action="store_true", help="Run one optimizer/instance/configuration/seed")
     actions.add_argument("--batch", action="store_true", help="Run all configurations and ten seeds")
     actions.add_argument("--summarize", action="store_true", help="Regenerate tables and SVG plots")
+    actions.add_argument("--plot", action="store_true", help="Export per-seed A/B/C figures from saved runs")
     parser.add_argument("--algorithm", default="nsga2", choices=["nsga2", "spea2"])
     parser.add_argument("--configuration", choices=["smaller_population", "reference", "larger_population"], default="reference")
     parser.add_argument("--seed", type=int, default=0)
@@ -35,6 +36,14 @@ def main():
     parser.add_argument("--output", type=Path, default=Path("results/nsga2"))
     parser.add_argument("--resume", action="store_true", help="Reuse matching completed run records")
     args = parser.parse_args()
+    if args.plot:
+        from .plotting import plot_directory
+        try:
+            output = plot_directory(args.output, [args.instance] if args.instance else None)
+        except (ImportError, ValueError) as error:
+            parser.error(str(error))
+        print(f"Saved per-seed Pareto figures (PNG, PDF, SVG) to {output}")
+        return
     if args.summarize:
         rows = summarize_directory(args.output)
         print(f"Wrote {len(rows)} summary rows and Pareto plots to {args.output}")
