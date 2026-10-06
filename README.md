@@ -8,8 +8,9 @@ Syed Mohammad Abdur-Rahman Tirmizey, Jakob Andreas Amtedal, Khoa Anh Huynh**.
 Both NSGA-II and SPEA2 are implemented with shared initialization, variation,
 capacity repair, and evaluation. The experiment pipeline verifies comparable
 protocols, saves results, calculates HV/ND and runtime summaries, performs paired
-statistical comparisons, and generates plots. All **360 common-source runs** are complete locally, with zero failures;
-section 4 reports their summaries and all 18 statistical comparisons.
+statistical comparisons, and generates plots. All **360 runs** were completed
+locally using the same code, with zero failures. Section 4 presents the results
+and 18 statistical comparisons.
 
 ## 1. How the next generation is created
 
@@ -72,7 +73,7 @@ must still be filtered for non-dominance.
 | Block | Design |
 | --- | --- |
 | Encoding | `a[j]` is the facility serving customer `j`, using zero-based IDs. Each chromosome has one gene per customer; cap61 has 50 genes with values 0–15. Used facilities are open; unused facilities are closed. |
-| Initialization | Process customers by descending demand, randomly breaking demand ties. Shuffle feasible facilities before stable best-fit sorting, then randomly choose among the best three. Verify each individual and allow at most 100 construction attempts per individual. Use one seeded random-number generator per run. |
+| Initialization | Construct feasible assignments using randomized best fit, with up to 100 attempts per individual. See Initialization below. |
 | NSGA-II selection | Binary tournaments prefer lower non-dominated rank, then larger crowding distance. Remaining ties are random. |
 | SPEA2 selection | Binary tournaments on archive members prefer lower strength-based fitness plus density; remaining ties are random. |
 | Crossover | With probability `pc` per pair, exchange chromosome tails after a random cut. Otherwise copy the parents. Skip crossover for one-gene chromosomes. |
@@ -84,10 +85,7 @@ must still be filtered for non-dominance.
 
 Crossover and mutation preserve valid facility IDs and one assignment per
 customer, but can violate capacities. Repair returns a separate chromosome and
-does not alter benchmark data. Initialization randomizes equal-capacity facility ties to avoid favouring low
-facility IDs. Its best-fit construction is a heuristic, not uniform sampling of
-feasible solutions. Necessary feasibility checks precede construction, but passing
-them does not prove that a feasible assignment exists.
+does not alter benchmark data.
 
 ### Objectives and feasibility
 
@@ -109,6 +107,8 @@ Facility capacities are respected:       sum_j d[j] * x[i][j] <= S[i] * y[i]
 combined into a weighted sum. One solution dominates another if it is no worse
 in either objective and strictly better in at least one.
 
+### Selection and archive update
+
 NSGA-II uses non-dominated rank and crowding distance. SPEA2 strength counts
 other dominated individuals; raw fitness sums the strengths of all dominators.
 Density is `1 / (sigma_k + 2)`, where `k = floor(sqrt(N))`, N is the current
@@ -127,7 +127,9 @@ generation. Final output is filtered for non-dominance.
 ### Initialization
 
 Both algorithms use the same **randomized best-fit construction** in
-[`initialization.py`](cflp/initialization.py). For each individual:
+[`initialization.py`](cflp/initialization.py). Necessary feasibility checks run
+first; passing them does not guarantee that construction will succeed. For each
+individual:
 
 ```text
 Start with an unassigned chromosome and each facility's full capacity
@@ -143,7 +145,9 @@ Start with an unassigned chromosome and each facility's full capacity
 Placing larger demands first aims to avoid leaving difficult customers until
 capacity is fragmented. Best fit favours tighter packing; choosing among three
 candidates introduces variation between individuals. This construction uses
-capacity and demand, without scoring opening or allocation costs.
+capacity and demand, without scoring opening or allocation costs. It does not
+sample feasible solutions uniformly; shuffling facility ties avoids favouring
+low facility IDs.
 
 If no facility can accommodate a customer, discard the partial assignment and
 restart that individual with fresh randomized choices. Allow at most **100
@@ -180,11 +184,10 @@ Invalid encodings or a lack of feasible moves raise `ValueError`. The shared
 `offspring.py` pipeline then retries crossover and mutation for the same parent
 pair. Each pair visit allows up to 50 variation attempts, each with up to two
 candidates; it moves to the next pair once at least one child succeeds. Exhaustion
-fails the run explicitly. This retries variation, rather than constructing an
-independent replacement or silently copying a parent. Failed candidates receive
-no objective evaluation, but their processing time is included in runtime.
+fails the run explicitly. Failed candidates receive no objective evaluation,
+but their processing time is included in runtime.
 
-### Example: cap61
+### Repair example: cap61
 
 The candidate chromosome before repair is:
 
@@ -237,17 +240,15 @@ configurations × 10 independent runs = 360 runs**. SPEA2 archive capacities are
 **50, 100, and 200**, respectively.
 
 Each evaluation produces both objective values and counts once against the
-budget, including initialization; caching by assignment is disabled. Repeated candidate
-assignments still consume evaluations, while stored parent objectives are reused
-during selection. Both algorithms handle the remaining budget without overshooting. Population size varies while crossover, mutation, and evaluation
-budget remain fixed. For SPEA2, archive size changes with population size, so
+budget, including initialization. Repeated candidate assignments still consume
+evaluations; only stored parent objectives are reused during selection. Both
+algorithms stop at the exact budget. Population size varies while crossover,
+mutation, and evaluation budget remain fixed. For SPEA2, archive size changes with population size, so
 those two effects cannot be separated by this design.
 
-The paired experiment comprises 360 runs across both algorithms, six instances,
-three configurations, and seeds 0–9, with 3,600,000 objective evaluations in total.
-The configurations perform 199, 99, and 49 full evolution generations after
-initialization, respectively. These are starting settings, not claims of optimal
-tuning.
+The full experiment uses **3,600,000 objective evaluations**. Configurations
+A, B, and C perform 199, 99, and 49 full generations after initialization,
+respectively. These are starting settings, not claims of optimal tuning.
 
 Runs execute sequentially, with algorithm order reversed on alternate seeds
 within each instance/configuration. Timing covers initialization through final-front
@@ -269,6 +270,21 @@ Each row summarizes 10 independent runs with 10,000 evaluations each. All 36
 rows use the same source fingerprint, declared common parameters, timing scope,
 and per-instance normalization. Runtime values describe this local execution
 and may differ on another machine.
+
+- **Quality:** compare hypervolume (HV); higher is better. Report mean, sample
+  standard deviation (`n-1`), best, and worst across independent runs.
+- **Comparability:** use common normalization bounds and one fixed HV reference
+  point per instance across both algorithms and all configurations. Implemented
+  scaling uses `U1 = sum_i F[i]`, `U2 = sum_j max_i C[i][j]`, and `fk / Uk`
+  (scale 1 for a zero bound). Feasible normalized costs lie in `[0, 1]`, so the
+  fixed reference `(1.1, 1.1)` is strictly worse. These conservative bounds are
+  independent of observed results and apply to both algorithms. Compare HV within
+  an instance; values across different instances are not a universal ranking.
+- **Diversity:** report the number of distinct non-dominated objective vectors
+  (ND). Duplicate objective vectors count once; a larger ND alone does not prove
+  better solution quality.
+- **Efficiency:** compare mean runtime alongside solution quality using the
+  timing scope above and the environment recorded in each run JSON.
 
 Instance: **cap61**
 
@@ -336,38 +352,6 @@ Instance: **cap122**
 | C | NSGA-II | 0.945693 | 0.007749 | 0.953045 | 0.930382 | 10.3 | 3.740 |
 | C | SPEA2 | 0.948093 | 0.006323 | 0.958699 | 0.934909 | 11.1 | 6.729 |
 
-- **Quality:** compare hypervolume (HV); higher is better. Report mean, sample
-  standard deviation (`n-1`), best, and worst across independent runs. Standard
-  deviation is left blank when summarizing a single run.
-- **Comparability:** use common normalization bounds and one fixed HV reference
-  point per instance across both algorithms and all configurations. Implemented
-  scaling uses `U1 = sum_i F[i]`, `U2 = sum_j max_i C[i][j]`, and `fk / Uk`
-  (scale 1 for a zero bound). Feasible normalized costs lie in `[0, 1]`, so the
-  fixed reference `(1.1, 1.1)` is strictly worse. These conservative bounds are
-  independent of observed results and apply to both algorithms. Compare HV within
-  an instance; values across different instances are not a universal ranking.
-- **Diversity:** report the number of distinct non-dominated objective vectors
-  (ND). Duplicate objective vectors count once; a larger ND alone does not prove
-  better solution quality.
-- **Efficiency:** compare mean runtime alongside solution quality using the
-  timing scope above and the environment recorded in each run JSON.
-- **Statistical comparison:** the primary endpoint is HV. For each of the 18
-  instance/configuration groups, use an exact two-sided paired permutation test
-  on the mean HV difference (NSGA-II minus SPEA2). Pair runs by seed only after
-  verifying identical initial populations. Enumerate all `2^10 = 1024` within-pair
-  label swaps. The null assumes exchangeable algorithm labels within independent
-  initialization pairs (symmetric paired differences). Sharing initial populations
-  supports this design; it does not guarantee the null assumption is true.
-  Use alpha 0.05 and Holm correction across all 18 comparisons, fixed before
-  examining results. Report raw/adjusted p-values, mean HV difference, and paired
-  NSGA-II win fraction (ties count as half). ND and runtime remain descriptive.
-  No p-values are published until all declared groups have the exact seed set,
-  at least 10 pairs, matching protocols, and no failed runs. The focus-instance
-  subset does not get a smaller correction family after seeing the results.
-  The exact test uses the paired-label-swap construction described in the
-  [SciPy permutation-test documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.permutation_test.html);
-  our implementation uses only the standard library.
-
 | Output | Purpose | Result |
 | --- | --- | --- |
 | Summary and runtime tables | Compare all 36 algorithm/instance/configuration combinations | All 36 groups complete. `results/comparison/summary.csv` |
@@ -376,9 +360,9 @@ Instance: **cap122**
 | Medium-instance figures | Compare both algorithms on cap101 and cap102 | Pooled Pareto points and HV mean ± SD, one 2 × 3 figure per instance |
 | Large-instance figures | Compare both algorithms on cap121 and cap122 | Pooled Pareto points and HV mean ± SD, one 2 × 3 figure per instance |
 
-The figures below cover **all six instances**. Each figure represents one instance: the top row shows Pareto points, and the
-bottom row shows HV mean ± SD for the same configurations. Columns represent
-A, B, and C. Axis ranges are shared across configurations within each metric
+The figures below cover **all six instances**, with one figure per instance.
+The top row shows Pareto points; the bottom row shows HV mean ± SD for the
+same configurations. Columns represent A, B, and C. Axis ranges are shared across configurations within each metric
 row; Pareto and HV axes are separate.
 
 **Pareto comparison:** the horizontal axis is facility opening cost (`f1`), and
@@ -432,6 +416,25 @@ section 5; the tables above retain the current local summary. Each run is checke
 for feasible assignments, matching objective values, non-dominance, and an exact
 evaluation budget before it is saved.
 
+**Statistical comparison:** the primary endpoint is HV. For each of the 18
+instance/configuration groups, use an exact two-sided paired permutation test
+on the mean HV difference (NSGA-II minus SPEA2). Pair runs by seed only after
+verifying identical initial populations. Enumerate all `2^10 = 1024` within-pair
+label swaps. The null assumes exchangeable algorithm labels within independent
+initialization pairs (symmetric paired differences). Sharing initial populations
+supports this design; it does not guarantee the null assumption is true.
+
+Use alpha 0.05 and Holm correction across all 18 comparisons, fixed before
+examining results. Report raw/adjusted p-values, mean HV difference, and paired
+NSGA-II win fraction (ties count as half). ND and runtime remain descriptive.
+
+No p-values are published until all declared groups have the exact seed set,
+at least 10 pairs, matching protocols, and no failed runs. The focus-instance
+subset does not get a smaller correction family after seeing the results.
+The exact test uses the paired-label-swap construction described in the
+[SciPy permutation-test documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.permutation_test.html);
+our implementation uses only the standard library.
+
 **Statistical comparison results (HV):** positive differences favour NSGA-II;
 negative differences favour SPEA2. Win fraction is for NSGA-II within paired
 initializations, with ties counted as half. Holm-adjusted p-values cover the
@@ -469,7 +472,7 @@ larger populations. For SPEA2, population size also changes archive capacity.
 
 Use Python **3.10 or newer**. The algorithms, metrics, SVG plots, and tests use
 only the standard library; no third-party installation is required for that
-pipeline. The optional figure exports use Matplotlib. From the
+pipeline. Figure exports use Matplotlib. Run the following commands from the
 repository root:
 
 ```bash
@@ -524,7 +527,7 @@ Outputs are `runs/<instance>__<algorithm>__<configuration>__seed<n>.json`,
 `summary.csv`, `summary_status.json`, `comparison.csv`, `comparison_status.json`, and
 `plots/<instance>__<configuration>.svg` beneath the selected output directory.
 
-The main components remain `representation.py` (encoding), `evaluation.py`
+The main components are `representation.py` (encoding), `evaluation.py`
 (objectives), `operators.py` (variation), `repair.py` (capacity repair), and
 `nsga2.py` / `spea2.py` (algorithm logic), under `cflp/`. Shared initialization is
 in `initialization.py`; the shared child pipeline is in `offspring.py`. The
@@ -547,14 +550,9 @@ shared result contract (shown for SPEA2):
 }
 ```
 
-Both algorithms call `configuration.validate_run_config`, create one
-`random.Random(seed)`, and reuse `initialization.initialize_population`,
-`evaluation.evaluate`, and `offspring.generate_offspring` with the same retry
-settings. SPEA2 implements its own fitness, archive and selection logic, resolves
-archive capacity from `archive_size_rule=equal_to_population_size`, and updates
-the archive with the last evaluated population. Registration is in
-`experiments.ALGORITHMS`. Saving, timing, metrics, summaries, and plots are shared.
-`protocol.py` validates comparable run records before aggregation or plotting.
+Both algorithms are registered in `experiments.ALGORITHMS` and use the shared
+initialization and offspring pipeline described in section 2. `protocol.py`
+validates comparable run records before aggregation or plotting.
 
 Use a new output directory after any Python-source change, or resume only an
 identical source/data/environment run. Do not edit stored fingerprints to bypass
