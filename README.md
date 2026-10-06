@@ -124,6 +124,41 @@ vectors after every removal. Exact ties use candidate index. The last evaluated
 population is included in the final archive update, even for a partial final
 generation. Final output is filtered for non-dominance.
 
+### Initialization
+
+Both algorithms use the same **randomized best-fit construction** in
+[`initialization.py`](cflp/initialization.py). For each individual:
+
+```text
+Start with an unassigned chromosome and each facility's full capacity
+    -> order customers by descending demand; break equal-demand ties randomly
+    -> for the next customer, retain facilities with enough remaining capacity
+    -> shuffle these facilities to randomize ties
+    -> sort by remaining capacity after assigning this customer, smallest first
+    -> choose uniformly among the best three (or all if fewer than three fit)
+    -> assign the customer and subtract its demand from the chosen facility
+    -> repeat for every customer, then verify the complete assignment
+```
+
+Placing larger demands first aims to avoid leaving difficult customers until
+capacity is fragmented. Best fit favours tighter packing; choosing among three
+candidates introduces variation between individuals. This construction uses
+capacity and demand, without scoring opening or allocation costs.
+
+If no facility can accommodate a customer, discard the partial assignment and
+restart that individual with fresh randomized choices. Allow at most **100
+construction attempts per individual**, including the first attempt; exhaustion
+raises an error and fails the run. Initial individuals are constructed feasibly
+without calling the relocation repair used after crossover and mutation.
+
+Repeat until the population contains **50, 100, or 200 individuals**, depending
+on configuration A, B, or C. Duplicate individuals are allowed. Each optimizer
+uses its own `Random(seed)` generator; the same instance, configuration and seed
+produce the same ordered initial population for both algorithms, verified by its
+saved fingerprint. Each initial individual is then evaluated once, counting
+toward the **10,000-evaluation budget**. Failed construction attempts receive no
+objective evaluation, but their processing time is included in runtime.
+
 ### Decoding and capacity repair
 
 Decoding groups customers by their facility genes, identifies open facilities,
@@ -151,7 +186,7 @@ no objective evaluation, but their processing time is included in runtime.
 
 ### Example: cap61
 
-The initial chromosome is:
+The candidate chromosome before repair is:
 
 ```text
 [2, 3, 3, 2, 3, 3, 2, 2, 3, 3,
