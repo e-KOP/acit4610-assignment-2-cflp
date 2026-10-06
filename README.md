@@ -5,11 +5,11 @@ minimise **facility opening cost** and **customer allocation cost**, subject to
 capacity constraints. Group number: **Group-8**. Group members: **Zhongye Xue,
 Syed Mohammad Abdur-Rahman Tirmizey, Jakob Andreas Amtedal, Khoa Anh Huynh**.
 
-The sections below describe the implemented NSGA-II pipeline and planned SPEA2
-design. Shared initialization, variation, capacity repair, evaluation, complete
-NSGA-II evolution, hypervolume, result saving, summaries, and plotting are
-implemented. **All 180 NSGA-II runs are complete locally**. SPEA2 and the
-two-algorithm statistical comparison remain pending.
+Both NSGA-II and SPEA2 are implemented with shared initialization, variation,
+capacity repair, and evaluation. The experiment pipeline verifies comparable
+protocols, saves results, calculates HV/ND and runtime summaries, performs paired
+statistical comparisons, and generates plots. All **360 common-source runs** are complete locally, with zero failures;
+section 4 reports their summaries and all 18 statistical comparisons.
 
 ## 1. How the next generation is created
 
@@ -63,8 +63,7 @@ Start with the current population and an initially empty archive
     -> return non-dominated solutions from the final archive
 ```
 
-SPEA2 is not implemented yet; the flow above is its intended design.
-The external archive preserves elites. Its proposed capacity equals population
+The external archive preserves elites. Its capacity equals population
 size. Archive filling can include dominated individuals, so the final output
 must still be filtered for non-dominance.
 
@@ -75,7 +74,7 @@ must still be filtered for non-dominance.
 | Encoding | `a[j]` is the facility serving customer `j`, using zero-based IDs. Each chromosome has one gene per customer; cap61 has 50 genes with values 0–15. Used facilities are open; unused facilities are closed. |
 | Initialization | Process customers by descending demand, randomly breaking demand ties. Shuffle feasible facilities before stable best-fit sorting, then randomly choose among the best three. Verify each individual and allow at most 100 construction attempts per individual. Use one seeded random-number generator per run. |
 | NSGA-II selection | Binary tournaments prefer lower non-dominated rank, then larger crowding distance. Remaining ties are random. |
-| SPEA2 selection | Planned: binary tournaments on archive members prefer lower strength-based fitness plus density; remaining ties are random. |
+| SPEA2 selection | Binary tournaments on archive members prefer lower strength-based fitness plus density; remaining ties are random. |
 | Crossover | With probability `pc` per pair, exchange chromosome tails after a random cut. Otherwise copy the parents. Skip crossover for one-gene chromosomes. |
 | Mutation | Independently, with probability `pm` per gene, assign that customer to a different randomly selected facility. Skip mutation when only one facility exists. |
 | Repair | Relocate customers from overloaded facilities, prioritising a single move that resolves the overload. Details below. |
@@ -110,10 +109,20 @@ Facility capacities are respected:       sum_j d[j] * x[i][j] <= S[i] * y[i]
 combined into a weighted sum. One solution dominates another if it is no worse
 in either objective and strictly better in at least one.
 
-NSGA-II uses non-dominated rank and crowding distance. In the planned SPEA2 design,
-strength counts dominated individuals, raw fitness sums dominators' strengths,
-and density penalises crowded regions. The density neighbour index and distance
-scaling remain to be fixed before experiments.
+NSGA-II uses non-dominated rank and crowding distance. SPEA2 strength counts
+other dominated individuals; raw fitness sums the strengths of all dominators.
+Density is `1 / (sigma_k + 2)`, where `k = floor(sqrt(N))`, N is the current
+population-plus-archive size, and sigma_k is the kth nearest other individual.
+Distances are Euclidean after the fixed instance scaling described in section 4.
+Self-distances are excluded; duplicate vectors retain zero distances. A singleton
+uses sigma_k = 0. Total fitness is raw fitness plus density; lower is preferred.
+
+Archive filling orders dominated individuals by total fitness, then candidate
+index. Oversized non-dominated archives repeatedly remove the candidate with the
+lexicographically smallest sorted neighbour-distance vector, recomputing these
+vectors after every removal. Exact ties use candidate index. The last evaluated
+population is included in the final archive update, even for a partial final
+generation. Final output is filtered for non-dominance.
 
 ### Decoding and capacity repair
 
@@ -190,102 +199,107 @@ in experiments; the three focus instances are selected for detailed discussion.
 [configs/experiments.json](configs/experiments.json) contains the executable common settings.
 Both algorithms use seeds **0–9**, giving **2 algorithms × 6 instances × 3
 configurations × 10 independent runs = 360 runs**. SPEA2 archive capacities are
-provisionally **50, 100, and 200**, respectively.
+**50, 100, and 200**, respectively.
 
 Each evaluation produces both objective values and counts once against the
 budget, including initialization; caching by assignment is disabled. Repeated candidate
 assignments still consume evaluations, while stored parent objectives are reused
-during selection. NSGA-II handles the remaining budget without overshooting;
-SPEA2 must follow the same rule. Population size varies while crossover, mutation, and evaluation
+during selection. Both algorithms handle the remaining budget without overshooting. Population size varies while crossover, mutation, and evaluation
 budget remain fixed. For SPEA2, archive size changes with population size, so
 those two effects cannot be separated by this design.
 
-The NSGA-II experiment runner is executable. Its 180 runs cover all six instances,
-three configurations, and seeds 0–9, with 1,800,000 objective evaluations in total.
+The paired experiment comprises 360 runs across both algorithms, six instances,
+three configurations, and seeds 0–9, with 3,600,000 objective evaluations in total.
 The configurations perform 199, 99, and 49 full evolution generations after
 initialization, respectively. These are starting settings, not claims of optimal
 tuning.
 
-Runs execute sequentially. Timing covers initialization through final-front
+Runs execute sequentially, with algorithm order reversed on alternate seeds
+within each instance/configuration. Timing covers initialization through final-front
 extraction, including retries; it excludes data loading, post-run verification,
 metrics, and file writing. Each record includes the Python/platform/machine
 environment, Git revision, Python-source fingerprint, and input-data hash. The
 source fingerprint also identifies uncommitted Python changes. Use the same
-computational environment and shared procedures for the eventual comparison.
+computational environment and shared procedures for comparison. SHA-256 hashes
+of the actual ordered initial populations verify that the two algorithms share
+the same starting population for each seed. Their subsequent trajectories are
+allowed to diverge. Runs with different common settings, budgets, source/data
+hashes, normalization, or environments are rejected before comparisons or plots.
+Archive settings remain algorithm-specific; they must be consistent within SPEA2.
 
 ## 4. Results and evaluation
 
-**NSGA-II: 180 completed runs, zero failures; SPEA2: pending.** Each populated
-row below summarizes 10 independent runs with 10,000 evaluations each. Dashes
-mean pending results, not zero values. Across the six tables, 18 NSGA-II rows
-are populated and 18 SPEA2 rows await implementation. Runtime values describe
-this local execution and may differ on another machine.
+**NSGA-II: 180 completed runs; SPEA2: 180 completed runs; zero failures.**
+Each row summarizes 10 independent runs with 10,000 evaluations each. All 36
+rows use the same source fingerprint, declared common parameters, timing scope,
+and per-instance normalization. Runtime values describe this local execution
+and may differ on another machine.
 
 Instance: **cap61**
 
 | Config | MOEA | HV mean | HV SD | HV best | HV worst | ND mean | Time mean (s) |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| A | NSGA-II | 0.775261 | 0.016580 | 0.821206 | 0.762912 | 8.5 | 1.631 |
-| A | SPEA2 | — | — | — | — | — | — |
-| B | NSGA-II | 0.776536 | 0.016697 | 0.816141 | 0.763091 | 8.6 | 2.275 |
-| B | SPEA2 | — | — | — | — | — | — |
-| C | NSGA-II | 0.782784 | 0.025129 | 0.822418 | 0.753788 | 7.4 | 3.552 |
-| C | SPEA2 | — | — | — | — | — | — |
+| A | NSGA-II | 0.775261 | 0.016580 | 0.821206 | 0.762912 | 8.5 | 1.666 |
+| A | SPEA2 | 0.774851 | 0.015126 | 0.815370 | 0.762776 | 7.8 | 2.379 |
+| B | NSGA-II | 0.776536 | 0.016697 | 0.816141 | 0.763091 | 8.6 | 2.299 |
+| B | SPEA2 | 0.777820 | 0.016645 | 0.818325 | 0.767318 | 8.3 | 3.732 |
+| C | NSGA-II | 0.782784 | 0.025129 | 0.822418 | 0.753788 | 7.4 | 3.612 |
+| C | SPEA2 | 0.781649 | 0.024424 | 0.820631 | 0.760927 | 7.3 | 6.626 |
 
 Instance: **cap62**
 
 | Config | MOEA | HV mean | HV SD | HV best | HV worst | ND mean | Time mean (s) |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| A | NSGA-II | 0.775261 | 0.016580 | 0.821206 | 0.762912 | 8.5 | 1.628 |
-| A | SPEA2 | — | — | — | — | — | — |
-| B | NSGA-II | 0.776536 | 0.016697 | 0.816141 | 0.763091 | 8.6 | 2.232 |
-| B | SPEA2 | — | — | — | — | — | — |
-| C | NSGA-II | 0.782784 | 0.025129 | 0.822418 | 0.753788 | 7.4 | 3.567 |
-| C | SPEA2 | — | — | — | — | — | — |
+| A | NSGA-II | 0.775261 | 0.016580 | 0.821206 | 0.762912 | 8.5 | 1.697 |
+| A | SPEA2 | 0.774851 | 0.015126 | 0.815370 | 0.762776 | 7.8 | 2.401 |
+| B | NSGA-II | 0.776536 | 0.016697 | 0.816141 | 0.763091 | 8.6 | 2.281 |
+| B | SPEA2 | 0.777820 | 0.016645 | 0.818325 | 0.767318 | 8.3 | 3.720 |
+| C | NSGA-II | 0.782784 | 0.025129 | 0.822418 | 0.753788 | 7.4 | 3.636 |
+| C | SPEA2 | 0.781649 | 0.024424 | 0.820631 | 0.760927 | 7.3 | 6.650 |
 
 Instance: **cap101**
 
 | Config | MOEA | HV mean | HV SD | HV best | HV worst | ND mean | Time mean (s) |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| A | NSGA-II | 0.965845 | 0.005484 | 0.972833 | 0.955371 | 10.4 | 1.625 |
-| A | SPEA2 | — | — | — | — | — | — |
-| B | NSGA-II | 0.961454 | 0.005763 | 0.968828 | 0.950686 | 10.2 | 2.157 |
-| B | SPEA2 | — | — | — | — | — | — |
-| C | NSGA-II | 0.957435 | 0.005495 | 0.965711 | 0.949963 | 9.8 | 3.409 |
-| C | SPEA2 | — | — | — | — | — | — |
+| A | NSGA-II | 0.965845 | 0.005484 | 0.972833 | 0.955371 | 10.4 | 1.585 |
+| A | SPEA2 | 0.964199 | 0.006835 | 0.973436 | 0.948085 | 10.3 | 2.387 |
+| B | NSGA-II | 0.961454 | 0.005763 | 0.968828 | 0.950686 | 10.2 | 2.238 |
+| B | SPEA2 | 0.963461 | 0.007326 | 0.977355 | 0.953688 | 11.0 | 3.689 |
+| C | NSGA-II | 0.957435 | 0.005495 | 0.965711 | 0.949963 | 9.8 | 3.538 |
+| C | SPEA2 | 0.956802 | 0.005491 | 0.964884 | 0.946105 | 10.0 | 6.554 |
 
 Instance: **cap102**
 
 | Config | MOEA | HV mean | HV SD | HV best | HV worst | ND mean | Time mean (s) |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| A | NSGA-II | 0.965845 | 0.005484 | 0.972833 | 0.955371 | 10.4 | 1.534 |
-| A | SPEA2 | — | — | — | — | — | — |
-| B | NSGA-II | 0.961454 | 0.005763 | 0.968828 | 0.950686 | 10.2 | 2.201 |
-| B | SPEA2 | — | — | — | — | — | — |
-| C | NSGA-II | 0.957435 | 0.005495 | 0.965711 | 0.949963 | 9.8 | 3.445 |
-| C | SPEA2 | — | — | — | — | — | — |
+| A | NSGA-II | 0.965845 | 0.005484 | 0.972833 | 0.955371 | 10.4 | 1.592 |
+| A | SPEA2 | 0.964199 | 0.006835 | 0.973436 | 0.948085 | 10.3 | 2.382 |
+| B | NSGA-II | 0.961454 | 0.005763 | 0.968828 | 0.950686 | 10.2 | 2.235 |
+| B | SPEA2 | 0.963461 | 0.007326 | 0.977355 | 0.953688 | 11.0 | 3.684 |
+| C | NSGA-II | 0.957435 | 0.005495 | 0.965711 | 0.949963 | 9.8 | 3.523 |
+| C | SPEA2 | 0.956802 | 0.005491 | 0.964884 | 0.946105 | 10.0 | 6.557 |
 
 Instance: **cap121**
 
 | Config | MOEA | HV mean | HV SD | HV best | HV worst | ND mean | Time mean (s) |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| A | NSGA-II | 0.962313 | 0.011004 | 0.985153 | 0.951886 | 12.3 | 1.722 |
-| A | SPEA2 | — | — | — | — | — | — |
-| B | NSGA-II | 0.952570 | 0.011513 | 0.970840 | 0.929307 | 11.1 | 2.346 |
-| B | SPEA2 | — | — | — | — | — | — |
-| C | NSGA-II | 0.945693 | 0.007749 | 0.953045 | 0.930382 | 10.3 | 3.680 |
-| C | SPEA2 | — | — | — | — | — | — |
+| A | NSGA-II | 0.962313 | 0.011004 | 0.985153 | 0.951886 | 12.3 | 1.763 |
+| A | SPEA2 | 0.956253 | 0.012414 | 0.973610 | 0.930749 | 10.9 | 2.587 |
+| B | NSGA-II | 0.952570 | 0.011513 | 0.970840 | 0.929307 | 11.1 | 2.376 |
+| B | SPEA2 | 0.956452 | 0.007395 | 0.965457 | 0.944614 | 12.1 | 3.842 |
+| C | NSGA-II | 0.945693 | 0.007749 | 0.953045 | 0.930382 | 10.3 | 3.774 |
+| C | SPEA2 | 0.948093 | 0.006323 | 0.958699 | 0.934909 | 11.1 | 6.772 |
 
 Instance: **cap122**
 
 | Config | MOEA | HV mean | HV SD | HV best | HV worst | ND mean | Time mean (s) |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| A | NSGA-II | 0.962313 | 0.011004 | 0.985153 | 0.951886 | 12.3 | 1.739 |
-| A | SPEA2 | — | — | — | — | — | — |
-| B | NSGA-II | 0.952570 | 0.011513 | 0.970840 | 0.929307 | 11.1 | 2.325 |
-| B | SPEA2 | — | — | — | — | — | — |
-| C | NSGA-II | 0.945693 | 0.007749 | 0.953045 | 0.930382 | 10.3 | 3.620 |
-| C | SPEA2 | — | — | — | — | — | — |
+| A | NSGA-II | 0.962313 | 0.011004 | 0.985153 | 0.951886 | 12.3 | 1.774 |
+| A | SPEA2 | 0.956253 | 0.012414 | 0.973610 | 0.930749 | 10.9 | 2.577 |
+| B | NSGA-II | 0.952570 | 0.011513 | 0.970840 | 0.929307 | 11.1 | 2.384 |
+| B | SPEA2 | 0.956452 | 0.007395 | 0.965457 | 0.944614 | 12.1 | 3.856 |
+| C | NSGA-II | 0.945693 | 0.007749 | 0.953045 | 0.930382 | 10.3 | 3.740 |
+| C | SPEA2 | 0.948093 | 0.006323 | 0.958699 | 0.934909 | 11.1 | 6.729 |
 
 - **Quality:** compare hypervolume (HV); higher is better. Report mean, sample
   standard deviation (`n-1`), best, and worst across independent runs. Standard
@@ -295,68 +309,132 @@ Instance: **cap122**
   scaling uses `U1 = sum_i F[i]`, `U2 = sum_j max_i C[i][j]`, and `fk / Uk`
   (scale 1 for a zero bound). Feasible normalized costs lie in `[0, 1]`, so the
   fixed reference `(1.1, 1.1)` is strictly worse. These conservative bounds are
-  independent of observed results and will also apply to SPEA2. Compare HV within
+  independent of observed results and apply to both algorithms. Compare HV within
   an instance; values across different instances are not a universal ranking.
 - **Diversity:** report the number of distinct non-dominated objective vectors
   (ND). Duplicate objective vectors count once; a larger ND alone does not prove
   better solution quality.
 - **Efficiency:** compare mean runtime alongside solution quality using the
   timing scope above and the environment recorded in each run JSON.
-- **Statistical comparison:** test, pairing rationale, significance level,
-  multiple-comparison handling, and effect sizes: **[Pending]**.
+- **Statistical comparison:** the primary endpoint is HV. For each of the 18
+  instance/configuration groups, use an exact two-sided paired permutation test
+  on the mean HV difference (NSGA-II minus SPEA2). Pair runs by seed only after
+  verifying identical initial populations. Enumerate all `2^10 = 1024` within-pair
+  label swaps. The null assumes exchangeable algorithm labels within independent
+  initialization pairs (symmetric paired differences). Sharing initial populations
+  supports this design; it does not guarantee the null assumption is true.
+  Use alpha 0.05 and Holm correction across all 18 comparisons, fixed before
+  examining results. Report raw/adjusted p-values, mean HV difference, and paired
+  NSGA-II win fraction (ties count as half). ND and runtime remain descriptive.
+  No p-values are published until all declared groups have the exact seed set,
+  at least 10 pairs, matching protocols, and no failed runs. The focus-instance
+  subset does not get a smaller correction family after seeing the results.
+  The exact test uses the paired-label-swap construction described in the
+  [SciPy permutation-test documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.permutation_test.html);
+  our implementation uses only the standard library.
 
 | Output | Purpose | Result |
 | --- | --- | --- |
-| Summary and runtime tables | Compare all 36 algorithm/instance/configuration combinations | 18 NSGA-II groups complete; SPEA2 pending. `results/nsga2/summary.csv` |
-| Per-run records | Retain seeds, parameters, objectives, HV, ND, and runtime | 180 JSON records in `results/nsga2/runs/`, also retaining assignments and provenance |
-| Small-instance Pareto plot | Compare NSGA-II and SPEA2 on cap61 | NSGA-II plots for all three configurations in `results/nsga2/plots/`; SPEA2 overlay pending |
-| Medium-instance Pareto plot | Compare NSGA-II and SPEA2 on cap101 | NSGA-II plots for all three configurations in `results/nsga2/plots/`; SPEA2 overlay pending |
-| Large-instance Pareto plot | Compare NSGA-II and SPEA2 on cap121 | NSGA-II plots for all three configurations in `results/nsga2/plots/`; SPEA2 overlay pending |
+| Summary and runtime tables | Compare all 36 algorithm/instance/configuration combinations | All 36 groups complete. `results/comparison/summary.csv` |
+| Per-run records | Retain seeds, parameters, objectives, HV, ND, and runtime | 360 JSON records in `results/comparison/runs/`, also retaining assignments and provenance |
+| Small-instance figures | Compare both algorithms on cap61 and cap62 | Pooled Pareto points and HV mean ± SD, one 2 × 3 figure per instance |
+| Medium-instance figures | Compare both algorithms on cap101 and cap102 | Pooled Pareto points and HV mean ± SD, one 2 × 3 figure per instance |
+| Large-instance figures | Compare both algorithms on cap121 and cap122 | Pooled Pareto points and HV mean ± SD, one 2 × 3 figure per instance |
 
-Pareto plots use `f1` on the horizontal axis and `f2` on the vertical axis. In the
-separate SVG plots produced by `--summarize`, the plotted set is the non-dominated union of
-completed runs, explicitly labelled **pooled**. This is not a typical run and is
-not used to calculate per-run HV statistics. The runner generates 18 SVG plots
-for NSGA-II and can overlay both algorithms when SPEA2 results are available.
-`python3 -m cflp --plot` also generates three presentation figures (cap61, cap101,
-and cap121), each with A/B/C panels on shared axes. Thin colored lines show
-the 10 individual final fronts, one per seed, without a pooled overlay.
-Lines guide the eye and do not imply feasible solutions
-between points. SPEA2 is labelled pending
-with no fabricated points. PNG, PDF, and SVG exports are saved under
-`results/nsga2/figures/`.
+The figures below cover **all six instances**. Each figure represents one instance: the top row shows Pareto points, and the
+bottom row shows HV mean ± SD for the same configurations. Columns represent
+A, B, and C. Axis ranges are shared across configurations within each metric
+row; Pareto and HV axes are separate.
+
+**Pareto comparison:** the horizontal axis is facility opening cost (`f1`), and
+the vertical axis is customer allocation cost (`f2`); lower and left are better.
+For each algorithm separately, combine the final objective vectors from seeds
+0–9, remove duplicates, and retain its non-dominated points. Blue circles denote
+NSGA-II; orange hollow triangles denote SPEA2, keeping overlapping points visible.
+No lines connect these points. This pooled set represents combined search coverage
+across 10 runs, not a typical run, and is not used to calculate per-run HV.
+
+**HV comparison:** markers show mean HV across the 10 independent runs; error
+bars extend to the mean **± one sample standard deviation** (`n-1`). Higher mean
+HV indicates better average performance; a shorter error bar indicates less
+variation between runs. These bars are neither confidence intervals nor minimum/
+maximum ranges. Their overlap does not determine statistical significance; use
+the paired tests reported below. The y-axes are zoomed to show variation.
 
 **Small instance: cap61 — configurations A, B, and C**
 
-![cap61 Pareto approximation sets for configurations A, B and C; NSGA-II results, SPEA2 pending](docs/figures/cap61_pareto.png)
+![cap61: Pareto points on the top row and HV mean plus or minus one sample standard deviation on the bottom row](docs/figures/cap61_comparison.png)
+
+**Small instance: cap62 — configurations A, B, and C**
+
+![cap62: Pareto points on the top row and HV mean plus or minus one sample standard deviation on the bottom row](docs/figures/cap62_comparison.png)
 
 **Medium instance: cap101 — configurations A, B, and C**
 
-![cap101 Pareto approximation sets for configurations A, B and C; NSGA-II results, SPEA2 pending](docs/figures/cap101_pareto.png)
+![cap101: Pareto points on the top row and HV mean plus or minus one sample standard deviation on the bottom row](docs/figures/cap101_comparison.png)
+
+**Medium instance: cap102 — configurations A, B, and C**
+
+![cap102: Pareto points on the top row and HV mean plus or minus one sample standard deviation on the bottom row](docs/figures/cap102_comparison.png)
 
 **Large instance: cap121 — configurations A, B, and C**
 
-![cap121 Pareto approximation sets for configurations A, B and C; NSGA-II results, SPEA2 pending](docs/figures/cap121_pareto.png)
+![cap121: Pareto points on the top row and HV mean plus or minus one sample standard deviation on the bottom row](docs/figures/cap121_comparison.png)
 
-Each panel shows the 10 individual NSGA-II fronts, with
-10,000 evaluations per run. SPEA2 remains
-empty until its results are available. The embedded PNG snapshots are stored in
-`docs/figures/` so they can be included with the README in GitHub.
+**Large instance: cap122 — configurations A, B, and C**
+
+![cap122: Pareto points on the top row and HV mean plus or minus one sample standard deviation on the bottom row](docs/figures/cap122_comparison.png)
+
+All figures use 10,000 evaluations per run. Embedded PNG snapshots are retained
+in `docs/figures/` for GitHub. `scripts/plot_comparison.py` reproduces all six
+figures in PNG, PDF, and SVG from saved records, without rerunning optimization.
+The optional `python3 -m cflp --plot` command retains the individual-seed front
+view for cap61, cap101, and cap121. Separately, `--summarize` exports 18 pooled
+SVG comparisons, one per instance/configuration.
 
 Generated result directories are ignored by Git. Reproduce these outputs using
 section 5; the tables above retain the current local summary. Each run is checked
 for feasible assignments, matching objective values, non-dominance, and an exact
 evaluation budget before it is saved.
 
-**Discussion and conclusions:** NSGA-II measurements are available above.
-Comparative conclusions and statistical significance remain pending SPEA2 and
-the statistical analysis; descriptive means alone do not establish significance.
+**Statistical comparison results (HV):** positive differences favour NSGA-II;
+negative differences favour SPEA2. Win fraction is for NSGA-II within paired
+initializations, with ties counted as half. Holm-adjusted p-values cover the
+entire 18-comparison family. Failure to reject does not demonstrate equivalence.
+
+| Instance | Config | Mean HV difference | NSGA-II paired win fraction | Raw p | Holm p | Reject at 0.05 |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| cap61 | A | +0.000411 | 0.40 | 0.730469 | 1.000000 | No |
+| cap61 | B | -0.001284 | 0.20 | 0.160156 | 1.000000 | No |
+| cap61 | C | +0.001135 | 0.80 | 0.316406 | 1.000000 | No |
+| cap62 | A | +0.000411 | 0.40 | 0.730469 | 1.000000 | No |
+| cap62 | B | -0.001284 | 0.20 | 0.160156 | 1.000000 | No |
+| cap62 | C | +0.001135 | 0.80 | 0.316406 | 1.000000 | No |
+| cap101 | A | +0.001646 | 0.60 | 0.294922 | 1.000000 | No |
+| cap101 | B | -0.002006 | 0.30 | 0.322266 | 1.000000 | No |
+| cap101 | C | +0.000634 | 0.60 | 0.703125 | 1.000000 | No |
+| cap102 | A | +0.001646 | 0.60 | 0.294922 | 1.000000 | No |
+| cap102 | B | -0.002006 | 0.30 | 0.322266 | 1.000000 | No |
+| cap102 | C | +0.000634 | 0.60 | 0.703125 | 1.000000 | No |
+| cap121 | A | +0.006060 | 0.60 | 0.054688 | 0.984375 | No |
+| cap121 | B | -0.003882 | 0.40 | 0.167969 | 1.000000 | No |
+| cap121 | C | -0.002400 | 0.30 | 0.253906 | 1.000000 | No |
+| cap122 | A | +0.006060 | 0.60 | 0.054688 | 0.984375 | No |
+| cap122 | B | -0.003882 | 0.40 | 0.167969 | 1.000000 | No |
+| cap122 | C | -0.002400 | 0.30 | 0.253906 | 1.000000 | No |
+
+**Discussion and conclusions:** the tables, pooled Pareto points, and HV error bars expose
+quality, diversity, runtime and configuration effects without selecting only the
+best seed. The comparison concerns the implemented algorithms under this budget
+and initialization heuristic; it is not an optimality claim. ND alone does not
+measure quality, and different population sizes trade more generations for
+larger populations. For SPEA2, population size also changes archive capacity.
 
 ## 5. Reproduce the project
 
 Use Python **3.10 or newer**. The algorithms, metrics, SVG plots, and tests use
 only the standard library; no third-party installation is required for that
-pipeline. The optional three-panel figure script uses Matplotlib. From the
+pipeline. The optional figure exports use Matplotlib. From the
 repository root:
 
 ```bash
@@ -367,25 +445,30 @@ python3 -m cflp --plan
 # One complete NSGA-II run
 python3 -m cflp --run --algorithm nsga2 --instance cap61 --configuration reference --seed 0 --output results/example
 
-# All 180 NSGA-II runs, reusing matching completed records
-python3 -m cflp --batch --algorithm nsga2 --output results/nsga2 --resume
+# All 360 runs, with paired seeds and alternating algorithm order
+python3 -m cflp --batch --algorithm both --output results/comparison --resume
 
 # Rebuild tables and plots from saved runs
-python3 -m cflp --summarize --output results/nsga2
+python3 -m cflp --summarize --output results/comparison
 
-# Export three A/B/C-panel figures, keeping SPEA2 empty until available
+# Reproduce all six README figures (Pareto points and HV mean ± SD)
 python3 -m pip install -r requirements-plotting.txt
-python3 -m cflp --plot --output results/nsga2
+python3 scripts/plot_comparison.py --results results/comparison --output docs/figures
+
+# Optional: inspect individual-seed fronts for the three focus instances
+python3 -m cflp --plot --output results/comparison
 ```
 
-The current validation includes **48 passing tests**, unchanged benchmark
-checksums, and 180 completed NSGA-II runs. Reusing the
-full completed batch was checked to preserve every saved run record.
+Validation includes **74 passing tests**, unchanged benchmark checksums,
+exact evaluation-budget checks, verified initialization pairing, protocol-mismatch
+rejection, hand-calculated statistical tests, and end-to-end run/plot commands.
 
 - `--run` selects one configuration and seed; defaults are cap61, `reference`,
   seed 0, and NSGA-II. `--batch` uses all configurations and seeds 0–9; add
-  `--instance cap61` to restrict it to 30 runs. Configuration and seed flags
-  apply to single runs only.
+  `--instance cap61` to restrict it to 30 runs per algorithm. Use `--algorithm both`
+  with `--batch` for all 360 runs (60 for one instance), or `--algorithm spea2` for
+  SPEA2 alone. The default output directory is `results/comparison`. Configuration
+  and seed flags apply to single runs only.
 - `--plot` exports the three focus-instance figures from saved records under
   `--output`, writing PNG/PDF/SVG into its `figures/` directory. Add
   `--instance cap61` to export one instance. It does not rerun the optimizer.
@@ -398,11 +481,12 @@ full completed batch was checked to preserve every saved run record.
 - Failed runs save an error and stop the batch. A partial batch is not a completed
   experiment. `--summarize` can summarize completed records and reports failures
   separately in `summary_status.json`.
-- `--plan` previews the intended 360-run design without executing it. SPEA2 is
-  not registered yet, so `--algorithm spea2` currently returns an explicit error.
+- `--plan` previews the 360-run design without executing it. Both algorithms
+  are registered. `--summarize` also writes `comparison.csv` and
+  `comparison_status.json`; partial experiments produce no inferential rows.
 
 Outputs are `runs/<instance>__<algorithm>__<configuration>__seed<n>.json`,
-`summary.csv`, `summary_status.json`, and
+`summary.csv`, `summary_status.json`, `comparison.csv`, `comparison_status.json`, and
 `plots/<instance>__<configuration>.svg` beneath the selected output directory.
 
 The main components remain `representation.py` (encoding), `evaluation.py`
@@ -412,8 +496,8 @@ in `initialization.py`; the shared child pipeline is in `offspring.py`. The
 runner, metrics, summaries, and plots are in `experiments.py`, `metrics.py`,
 `statistics.py`, and `plotting.py`.
 
-For SPEA2 integration, keep `run(instance, config, seed)` and return the same
-result contract:
+Both registered algorithms implement `run(instance, config, seed)` with this
+shared result contract (shown for SPEA2):
 
 ```python
 {
@@ -422,23 +506,23 @@ result contract:
     "seed": seed,
     "evaluations": actual_evaluations,
     "generations": generations,
+    "initial_population_sha256": initial_population_fingerprint,
     "population": final_nondominated_assignments,
     "objectives": corresponding_objective_pairs,
 }
 ```
 
-Call `configuration.validate_run_config`, create one `random.Random(seed)`, and
-reuse `initialization.initialize_population`, `evaluation.evaluate`, and
-`offspring.generate_offspring` with the common retry settings. Implement SPEA2's
-strength, raw fitness, density, archive selection/truncation, and tournaments;
-resolve archive capacity from `archive_size_rule=equal_to_population_size`.
-Update the archive with the last evaluated population before returning its
-non-dominated subset. Add tests, then register `"spea2": spea2.run` in
-`experiments.ALGORITHMS`. Saving, timing, metrics, summaries, and plots are reused.
+Both algorithms call `configuration.validate_run_config`, create one
+`random.Random(seed)`, and reuse `initialization.initialize_population`,
+`evaluation.evaluate`, and `offspring.generate_offspring` with the same retry
+settings. SPEA2 implements its own fitness, archive and selection logic, resolves
+archive capacity from `archive_size_rule=equal_to_population_size`, and updates
+the archive with the last evaluated population. Registration is in
+`experiments.ALGORITHMS`. Saving, timing, metrics, summaries, and plots are shared.
+`protocol.py` validates comparable run records before aggregation or plotting.
 
-Before the final comparison, use the same completed source revision, data,
-common parameters, normalization, and environment for both algorithms. Changes
-to shared initialization or operators require rerunning NSGA-II. The statistical
-test, pairing rationale, significance level, effect size, and multiple-comparison
-policy remain to be fixed; equal seed labels alone do not establish meaningful
-pairing.
+Use a new output directory after any Python-source change, or resume only an
+identical source/data/environment run. Do not edit stored fingerprints to bypass
+this check. Historical NSGA-II records remain separate; they are not combined
+with the regenerated paired comparison. The tests and CLI can regenerate results
+from the repository; generated results are not a substitute for executable code.

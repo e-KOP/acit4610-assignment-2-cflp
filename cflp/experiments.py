@@ -13,7 +13,8 @@ from .configuration import validate_run_config
 from .evaluation import evaluate
 from .metrics import calculate_metrics, unique_front
 from .plotting import pareto_svg
-from .statistics import summarize_runs
+from .statistics import summarize_runs, compare_algorithms
+from .protocol import validate_records
 from . import nsga2, spea2
 
 ALGORITHMS = {
@@ -28,15 +29,15 @@ def load_experiment_config():
 
 def experiment_plan(config):
     for instance in config["instances"]:
-        for algorithm in config["algorithms"]:
-            for name, overrides in config["configurations"].items():
-                for seed in config["seeds"]:
-                    yield {
-                        "instance": instance, "algorithm": algorithm,
-                        "configuration": name, "seed": seed,
-                        "parameters": {**config["common"], **overrides,
-                                       **config.get("algorithm_specific", {}).get(algorithm, {})},
-                    }
+        for name, overrides in config["configurations"].items():
+            for seed in config["seeds"]:
+                # Alternate algorithm order across paired seeds to balance timing drift.
+                algorithms = config["algorithms"][::1 if seed % 2 == 0 else -1]
+                for algorithm in algorithms:
+                    yield {"instance": instance, "algorithm": algorithm,
+                           "configuration": name, "seed": seed,
+                           "parameters": {**config["common"], **overrides,
+                               **config.get("algorithm_specific", {}).get(algorithm, {})}}
 
 
 def source_fingerprint():
@@ -116,18 +117,7 @@ def summarize_directory(output_dir):
     if not records:
         raise ValueError("No run records found.")
     successful = [r for r in records if r["status"] == "completed"]
-    protocols, seen = {}, set()
-    for record in successful:
-        key = (record["instance"], record["configuration"], record["algorithm"])
-        identity = (*key, record["seed"])
-        if identity in seen:
-            raise ValueError("Duplicate run identity.")
-        seen.add(identity)
-        protocol = json.dumps([record["parameters"], record["source_sha256"], record["data_sha256"],
-                               record["metrics"]["normalization"], record["environment"]], sort_keys=True)
-        if key in protocols and protocols[key] != protocol:
-            raise ValueError("Cannot summarize mixed experiment protocols in one group.")
-        protocols[key] = protocol
+    validate_records(records)
     rows = summarize_runs(successful)
     if rows:
         with (output_dir / "summary.csv").open("w", newline="") as handle:
@@ -145,10 +135,18 @@ def summarize_directory(output_dir):
         series = {name: unique_front(values) for name, values in series.items()}
         (plots / f"{instance}__{configuration}.svg").write_text(
             pareto_svg(series, f"{instance} / {configuration}: pooled non-dominated fronts"))
+    comparison, comparison_status = compare_algorithms(records, load_experiment_config())
+    comparison_path = output_dir / "comparison.csv"
+    with comparison_path.open("w", newline="") as handle:
+        fields = list(comparison[0]) if comparison else ["instance", "configuration", "metric", "p_raw", "p_holm"]
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(comparison)
+    atomic_json(output_dir / "comparison_status.json", comparison_status)
     atomic_json(output_dir / "summary_status.json", {
         "completed": len(successful), "failed": len(records)-len(successful),
         "groups": len(rows), "minimum_runs_per_group": min((r["runs"] for r in rows), default=0),
         "plot_rule": "Non-dominated union of completed runs per algorithm and configuration; not a typical run.",
-        "statistical_comparison": "Pending a second implemented algorithm; summaries are descriptive only.",
+        "statistical_comparison": comparison_status["status"],
     })
     return rows

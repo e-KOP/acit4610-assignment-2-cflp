@@ -29,11 +29,11 @@ def main():
     actions.add_argument("--batch", action="store_true", help="Run all configurations and ten seeds")
     actions.add_argument("--summarize", action="store_true", help="Regenerate tables and SVG plots")
     actions.add_argument("--plot", action="store_true", help="Export per-seed A/B/C figures from saved runs")
-    parser.add_argument("--algorithm", default="nsga2", choices=["nsga2", "spea2"])
+    parser.add_argument("--algorithm", default="nsga2", choices=["nsga2", "spea2", "both"])
     parser.add_argument("--configuration", choices=["smaller_population", "reference", "larger_population"], default="reference")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--budget", type=int, help="Override budget for pilots; use a separate output directory")
-    parser.add_argument("--output", type=Path, default=Path("results/nsga2"))
+    parser.add_argument("--output", type=Path, default=Path("results/comparison"))
     parser.add_argument("--resume", action="store_true", help="Reuse matching completed run records")
     args = parser.parse_args()
     if args.plot:
@@ -49,10 +49,12 @@ def main():
         print(f"Wrote {len(rows)} summary rows and Pareto plots to {args.output}")
         return
     if args.run or args.batch:
-        if args.algorithm not in ALGORITHMS:
+        if args.algorithm == "both" and args.run:
+            parser.error("Use --batch --algorithm both for the paired experiment.")
+        if args.algorithm != "both" and args.algorithm not in ALGORITHMS:
             parser.error(f"{args.algorithm} is not implemented yet.")
         config = load_experiment_config()
-        config["algorithms"] = [args.algorithm]
+        config["algorithms"] = list(ALGORITHMS) if args.algorithm == "both" else [args.algorithm]
         if args.instance or args.run:
             config["instances"] = [args.instance or "cap61"]
         if args.run:
@@ -79,7 +81,7 @@ def main():
         for name, overrides in config["configurations"].items():
             settings = {**config["common"], **overrides}
             print(f"  {name}: {settings}")
-        print("No results have been generated; pilot and confirm these settings before experiments.")
+        print("Plan preview only; no optimizer was executed by this command.")
     elif args.all:
         for name in INSTANCE_SIZES:
             print_instance(name)

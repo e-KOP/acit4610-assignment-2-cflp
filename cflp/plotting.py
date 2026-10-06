@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from .metrics import unique_front
+from .protocol import validate_records
 
 
 def pareto_svg(series, title):
@@ -57,6 +58,7 @@ def plot_instance(records, instance, output):
             "Figure export requires: python3 -m pip install -r requirements-plotting.txt"
         ) from error
     output = Path(output)
+    validate_records(records)
     selected = [r for r in records if r["instance"] == instance and r["status"] == "completed"]
     if not selected:
         raise ValueError(f"No completed runs for {instance}.")
@@ -104,8 +106,12 @@ def plot_instance(records, instance, output):
     fig.suptitle(f"{instance} | {category} instance | Pareto approximation sets", fontsize=16, x=.06, ha="left", y=.98)
     handles = [Line2D([], [], color=colors[seed], marker="o", alpha=.6,
                       linewidth=1, markersize=4, label=f"Seed {seed}") for seed in seeds]
+    for algorithm, (label, _, marker) in ALGORITHMS.items():
+        if algorithm in present:
+            handles.append(Line2D([], [], color="#334155", marker=marker,
+                linestyle="-" if algorithm == "nsga2" else "--", label=label))
     fig.legend(handles=handles, loc="upper center", bbox_to_anchor=(.53, .92),
-               ncol=5, frameon=False, fontsize=9)
+               ncol=6, frameon=False, fontsize=9)
     budgets = sorted({r['evaluations'] for r in selected})
     budget_text = f"{budgets[0]:,} evaluations per run" if len(budgets) == 1 else "Mixed evaluation budgets"
     caption = (f"Colored lines: individual final fronts, one per seed. {budget_text}.\n"

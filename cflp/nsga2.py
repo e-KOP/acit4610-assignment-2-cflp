@@ -12,7 +12,7 @@ from .pareto import dominates, nondominated_sort
 from .evaluation import evaluate
 from .offspring import generate_offspring
 from .configuration import validate_run_config
-from .initialization import initialize_population
+from .initialization import initialize_population, population_fingerprint
 
 
 
@@ -195,6 +195,7 @@ def run(instance, config, seed):
         for individual in population
     ]
 
+    initial_fingerprint = population_fingerprint(population)
     evaluations = len(population)
     generations = 0
 
@@ -298,6 +299,7 @@ def run(instance, config, seed):
     ]
 
     return {
+        "initial_population_sha256": initial_fingerprint,
         "algorithm": "nsga2",
         "status": "completed",
         "generations": generations,

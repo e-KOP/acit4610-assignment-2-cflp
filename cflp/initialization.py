@@ -167,3 +167,10 @@ def initialize_population(
         population.append(individual)
 
     return population
+
+
+def population_fingerprint(population):
+    """Record the exact ordered initialization used for paired experiments."""
+    import hashlib
+    import json
+    return hashlib.sha256(json.dumps(population, separators=(",", ":")).encode()).hexdigest()
