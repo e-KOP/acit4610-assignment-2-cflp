@@ -271,6 +271,10 @@ rows use the same source fingerprint, declared common parameters, timing scope,
 and per-instance normalization. Runtime values describe this local execution
 and may differ on another machine.
 
+This repository includes the result tables below and six PNG figures in
+`docs/figures/`. Raw run records, CSV summaries, and additional plot exports are
+generated locally using the commands in section 5 and are not tracked in Git.
+
 - **Quality:** compare hypervolume (HV); higher is better. Report mean, sample
   standard deviation (`n-1`), best, and worst across independent runs.
 - **Comparability:** use common normalization bounds and one fixed HV reference
@@ -352,14 +356,6 @@ Instance: **cap122**
 | C | NSGA-II | 0.945693 | 0.007749 | 0.953045 | 0.930382 | 10.3 | 3.740 |
 | C | SPEA2 | 0.948093 | 0.006323 | 0.958699 | 0.934909 | 11.1 | 6.729 |
 
-| Output | Purpose | Result |
-| --- | --- | --- |
-| Summary and runtime tables | Compare all 36 algorithm/instance/configuration combinations | All 36 groups complete. `results/comparison/summary.csv` |
-| Per-run records | Retain seeds, parameters, objectives, HV, ND, and runtime | 360 JSON records in `results/comparison/runs/`, also retaining assignments and provenance |
-| Small-instance figures | Compare both algorithms on cap61 and cap62 | Pooled Pareto points and HV mean ± SD, one 2 × 3 figure per instance |
-| Medium-instance figures | Compare both algorithms on cap101 and cap102 | Pooled Pareto points and HV mean ± SD, one 2 × 3 figure per instance |
-| Large-instance figures | Compare both algorithms on cap121 and cap122 | Pooled Pareto points and HV mean ± SD, one 2 × 3 figure per instance |
-
 The figures below cover **all six instances**, with one figure per instance.
 The top row shows Pareto points; the bottom row shows HV mean ± SD for the
 same configurations. Columns represent A, B, and C. Axis ranges are shared across configurations within each metric
@@ -403,18 +399,6 @@ the paired tests reported below. The y-axes are zoomed to show variation.
 **Large instance: cap122 — configurations A, B, and C**
 
 ![cap122: Pareto points on the top row and HV mean plus or minus one sample standard deviation on the bottom row](docs/figures/cap122_comparison.png)
-
-All figures use 10,000 evaluations per run. Embedded PNG snapshots are retained
-in `docs/figures/` for GitHub. `scripts/plot_comparison.py` reproduces all six
-figures in PNG, PDF, and SVG from saved records, without rerunning optimization.
-The optional `python3 -m cflp --plot` command retains the individual-seed front
-view for cap61, cap101, and cap121. Separately, `--summarize` exports 18 pooled
-SVG comparisons, one per instance/configuration.
-
-Generated result directories are ignored by Git. Reproduce these outputs using
-section 5; the tables above retain the current local summary. Each run is checked
-for feasible assignments, matching objective values, non-dominance, and an exact
-evaluation budget before it is saved.
 
 **Statistical comparison:** the primary endpoint is HV. For each of the 18
 instance/configuration groups, use an exact two-sided paired permutation test
@@ -473,7 +457,8 @@ larger populations. For SPEA2, population size also changes archive capacity.
 Use Python **3.10 or newer**. The algorithms, metrics, SVG plots, and tests use
 only the standard library; no third-party installation is required for that
 pipeline. Figure exports use Matplotlib. Run the following commands from the
-repository root:
+repository root. On a fresh clone, complete the batch before running the
+summary and figure commands; these read the locally saved run records.
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -523,9 +508,11 @@ rejection, hand-calculated statistical tests, and end-to-end run/plot commands.
   are registered. `--summarize` also writes `comparison.csv` and
   `comparison_status.json`; partial experiments produce no inferential rows.
 
-Outputs are `runs/<instance>__<algorithm>__<configuration>__seed<n>.json`,
+The commands generate `runs/<instance>__<algorithm>__<configuration>__seed<n>.json`,
 `summary.csv`, `summary_status.json`, `comparison.csv`, `comparison_status.json`, and
 `plots/<instance>__<configuration>.svg` beneath the selected output directory.
+The comparison script exports each `<instance>_comparison` figure in PNG, PDF,
+and SVG. Only the six PNG snapshots are included in the repository.
 
 The main components are `representation.py` (encoding), `evaluation.py`
 (objectives), `operators.py` (variation), `repair.py` (capacity repair), and
@@ -556,6 +543,5 @@ validates comparable run records before aggregation or plotting.
 
 Use a new output directory after any Python-source change, or resume only an
 identical source/data/environment run. Do not edit stored fingerprints to bypass
-this check. Historical NSGA-II records remain separate; they are not combined
-with the regenerated paired comparison. The tests and CLI can regenerate results
-from the repository; generated results are not a substitute for executable code.
+this check. Keep results from different experiment protocols in separate
+directories.
