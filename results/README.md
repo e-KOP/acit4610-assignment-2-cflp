@@ -1,10 +1,13 @@
 # Generated experiment output
 
-This directory contains only this README in Git. Run the following commands
-from the repository root to generate experiment outputs in `results/comparison/`:
+The committed `comparison/` directory contains the 360 raw run records,
+`summary.csv`, `comparison.csv`, and their two status JSON files. Records retain
+final assignments, objective values, seeds, parameters, runtime, metrics, and
+source/data/environment metadata. They contain final results, not generation histories.
+
+Run these commands from the repository root to regenerate summaries and figures:
 
 ```bash
-python3 -m cflp --batch --algorithm both --output results/comparison --resume
 python3 -m cflp --summarize --output results/comparison
 python3 -m pip install -r requirements-plotting.txt
 python3 scripts/plot_comparison.py --results results/comparison
@@ -22,5 +25,15 @@ fronts for the three focus instances. A partial run produces descriptive output
 only; no inferential rows are released before the entire declared comparison family is complete. See the root
 README for timing, pairing, statistical assumptions and multiple-comparison rules.
 
-Generated directories are ignored by Git. Preserve raw records, and use a new
-output directory after code or protocol changes.
+To rerun the experiment, use a separate directory:
+
+```bash
+python3 -m cflp --batch --algorithm both --output results/reproduction --resume
+python3 -m cflp --summarize --output results/reproduction
+python3 scripts/plot_comparison.py --results results/reproduction --output results/reproduction/figures
+```
+
+The committed records retain the original execution environment. `--resume`
+rejects records from a different environment or source version. Keep the original
+records intact. Other experiment directories and additional plot exports remain
+ignored by Git; the six README PNG figures are tracked in `docs/figures/`.

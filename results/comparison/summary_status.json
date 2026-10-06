@@ -1,0 +1,8 @@
+{
+  "completed": 360,
+  "failed": 0,
+  "groups": 36,
+  "minimum_runs_per_group": 10,
+  "plot_rule": "Non-dominated union of completed runs per algorithm and configuration; not a typical run.",
+  "statistical_comparison": "complete"
+}

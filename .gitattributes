@@ -1,2 +1,5 @@
 # Keep the official benchmark bytes unchanged, including line endings and spaces.
 data/or_library/*.txt -text -whitespace
+
+# Normalize generated CSV line endings in Git without changing values.
+*.csv text eol=lf

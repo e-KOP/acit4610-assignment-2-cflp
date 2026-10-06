@@ -7,3 +7,12 @@ __pycache__/
 .DS_Store
 results/*
 !results/README.md
+!results/comparison/
+results/comparison/*
+!results/comparison/runs/
+results/comparison/runs/*
+!results/comparison/runs/*.json
+!results/comparison/summary.csv
+!results/comparison/summary_status.json
+!results/comparison/comparison.csv
+!results/comparison/comparison_status.json

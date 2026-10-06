@@ -271,9 +271,10 @@ rows use the same source fingerprint, declared common parameters, timing scope,
 and per-instance normalization. Runtime values describe this local execution
 and may differ on another machine.
 
-This repository includes the result tables below and six PNG figures in
-`docs/figures/`. Raw run records, CSV summaries, and additional plot exports are
-generated locally using the commands in section 5 and are not tracked in Git.
+This repository includes the result tables below, six PNG figures in
+`docs/figures/`, and the **360 raw run records**, CSV summaries, and status files
+in [results/comparison](results/comparison). Additional plot exports are generated
+locally using the commands in section 5.
 
 - **Quality:** compare hypervolume (HV); higher is better. Report mean, sample
   standard deviation (`n-1`), best, and worst across independent runs.
@@ -457,8 +458,10 @@ larger populations. For SPEA2, population size also changes archive capacity.
 Use Python **3.10 or newer**. The algorithms, metrics, SVG plots, and tests use
 only the standard library; no third-party installation is required for that
 pipeline. Figure exports use Matplotlib. Run the following commands from the
-repository root. On a fresh clone, complete the batch before running the
-summary and figure commands; these read the locally saved run records.
+repository root. The committed run records can be used directly to regenerate
+summaries and figures. Use a separate output directory for new experiments: the
+saved records retain the original machine environment, and `--resume` rejects
+mismatched environments or source code.
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -467,9 +470,6 @@ python3 -m cflp --plan
 
 # One complete NSGA-II run
 python3 -m cflp --run --algorithm nsga2 --instance cap61 --configuration reference --seed 0 --output results/example
-
-# All 360 runs, with paired seeds and alternating algorithm order
-python3 -m cflp --batch --algorithm both --output results/comparison --resume
 
 # Rebuild tables and plots from saved runs
 python3 -m cflp --summarize --output results/comparison
@@ -480,6 +480,11 @@ python3 scripts/plot_comparison.py --results results/comparison --output docs/fi
 
 # Optional: inspect individual-seed fronts for the three focus instances
 python3 -m cflp --plot --output results/comparison
+
+# Optional: rerun all 360 experiments in a separate directory
+python3 -m cflp --batch --algorithm both --output results/reproduction --resume
+# Summarize the new experiment separately
+python3 -m cflp --summarize --output results/reproduction
 ```
 
 Validation includes **74 passing tests**, unchanged benchmark checksums,

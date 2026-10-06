@@ -1,0 +1,12 @@
+{
+  "status": "complete",
+  "test": "exact_two_sided_paired_mean_permutation",
+  "metric": "hv",
+  "alpha": 0.05,
+  "correction": "Holm",
+  "family_size": 18,
+  "pairing": "Same instance, configuration, seed and verified identical initial population.",
+  "null_assumption": "Exchangeable algorithm labels within independent initialization pairs.",
+  "effect_sizes": "Mean HV difference and paired win fraction (ties count as half).",
+  "secondary_metrics": "ND and runtime are descriptive; no significance claims."
+}
