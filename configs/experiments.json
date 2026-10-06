@@ -1,5 +1,5 @@
 {
-  "status": "nsga2_ready_spea2_pending",
+  "status": "nsga2_and_spea2_ready",
   "algorithms": [
     "nsga2",
     "spea2"
