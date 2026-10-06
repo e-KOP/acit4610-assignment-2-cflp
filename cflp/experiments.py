@@ -14,10 +14,12 @@ from .evaluation import evaluate
 from .metrics import calculate_metrics, unique_front
 from .plotting import pareto_svg
 from .statistics import summarize_runs
-from . import nsga2
+from . import nsga2, spea2
 
-# Register SPEA2 here only after its run contract and tests are implemented.
-ALGORITHMS = {"nsga2": nsga2.run}
+ALGORITHMS = {
+    "nsga2": nsga2.run,
+    "spea2": spea2.run,
+}
 
 
 def load_experiment_config():
